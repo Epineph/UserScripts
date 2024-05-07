@@ -1,0 +1,80 @@
+#!/bin/bash
+
+sgdisk -og /dev/sda
+sgdisk -n 1:0:+512M -t 1:ef00 /dev/sda  # EFI partition
+sgdisk -n 2:0:+16G -t 2:fd00 /dev/sda   # Swap partition
+sgdisk -n 3:0:0 -t 3:8304 /dev/sda      # Root partition
+
+sgdisk -og /dev/sdb
+sgdisk -n 1:0:+512M -t 1:ef00 /dev/sdb  # EFI partition 
+sgdisk -n 2:0:+16G -t 2:fd00 /dev/sdb   # Swap partition
+sgdisk -n 3:0:0 -t 3:8304 /dev/sdb      # Root partitio
+
+It shouldn't be obvious I wish partition 1 2 and 3 to be chosen on both.
+
+Let's say that I use disk nvme1n1 and nvme0n1 and I have a windows partition on nvme1n1p2 (and let's use some different sizes just for the sake of it)
+
+# Optionally another EFI partition
+sgdisk -n 1:0:+1G -t 1:ef00 /dev/nvme0n1
+# Swap partition
+sgdisk -n 2:0:+32G -t 2:fd00 /dev/nvme0n1
+# Root partition (rest of the space)
+sgdisk -n 3:0:0 -t 3:8304 /dev/nvme0n1
+# EFI partition
+sgdisk -n 1:0:+1G -t 1:ef00 /dev/nvme1n1
+# Skip creating a new partition for Windows, assuming it exists as nvme1n1p2
+# Swap partition (assuming size from Windows + 32GB)
+sgdisk -n 3:0:+32G -t 3:8200 /dev/nvme1n1
+# Root partition (rest of the space)
+sgdisk -n 4:0:0 -t 4:8300 /dev/nvme1n1
+
+Would this above be possible to do?
+
+and then choosing type of raid (level, to keep it simple, let's use level=0 and 1, but raid-devices follows the amount of physical devices
+
+# Create RAID-0 for swap
+mdadm --create --verbose /dev/md/swap --level=0 --raid-devices=2 /dev/nvme1n1p3 /dev/nvme0n1p2
+
+# Create RAID-0 for root
+mdadm --create --verbose /dev/md/root --level=0 --raid-devices=2 /dev/nvme1n1p4 /dev/nvme0n1p3
+
+
+mdadm --detail --scan | sudo tee -a /etc/mdadm.conf
+
+LVM PART:
+
+One pv for each partition
+
+# Create physical volumes on RAID devices
+pvcreate /dev/md/swap
+pvcreate /dev/md/root
+
+# Create a volume group
+vgcreate vg0 /dev/md/swap /dev/md/root
+
+
+
+# Create logical volumes
+lvcreate -L 32G vg0 -n lv_swap (should be the size of both combined or optional I guess i possible, since it is lvm? your input is valuable here)
+lvcreate -l +100%FREE vg0 -n lv_root
+
+
+# Format the EFI partition(s)
+mkfs.fat -F32 /dev/nvme1n1p1
+mkfs.fat -F32 /dev/nvme0n1p1  # If used
+
+# Format the logical volumes
+mkswap /dev/vg0/lv_swap
+mkfs.ext4 /dev/vg0/lv_root
+
+# Mount the partitions
+mount /dev/vg0/lv_root /mnt
+mkdir -p /mnt/boot
+mount /dev/nvme1n1p1 /mnt/boot  # Choose one EFI partition to mount
+swapon /dev/vg0/lv_swap
+
+sed -i 's/block filesystems/block mdadm_udev lvm2 filesystems/' /etc/mkinitcpio.conf
+
+mkdir -p /mnt/etc
+cp /etc/mkinitcpio.conf /mnt/etc/mkinitcpio.conf
+
