@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Check if running as root
-if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root"
+# Ensure the script is run as root
+if [ "$(id -u)" -ne 0 ]; then
+   echo "This script must be run as root" >&2
    exit 1
 fi
 
@@ -32,26 +32,23 @@ fi
 
 USB_DEVICE="/dev/$USB_DEVICE"
 
-# Warning and confirmation
-echo "WARNING: All data on $USB_DEVICE will be destroyed!"
-read -p "Are you sure you want to continue? (y/N): " confirm
-if [[ $confirm != "y" ]]; then
-    echo "Aborting."
-    exit 1
-fi
 
-# Unmount the device if mounted
+# Define ISO and USB variables
+#ISO_FILE="/path/to/your/windows.iso"
+#USB_DEVICE="/dev/sdx"  # Be extremely careful with this!
+
+# Unmount the USB device if it is mounted
 umount ${USB_DEVICE}* 2>/dev/null
 
 # Create a new partition table
-parted ${USB_DEVICE} --script mklabel msdos
+parted $USB_DEVICE --script mklabel msdos
 
-# Create a new primary partition and make it bootable
-parted ${USB_DEVICE} --script mkpart primary fat32 1MiB 100%
-parted ${USB_DEVICE} --script set 1 boot on
+# Create a primary NTFS partition
+parted $USB_DEVICE --script mkpart primary ntfs 1MiB 100%
+parted $USB_DEVICE --script set 1 boot on
 
-# Format the partition to FAT32
-mkfs.fat -F32 ${USB_DEVICE}1
+# Format the partition to NTFS
+mkfs.ntfs -F 32 ${USB_DEVICE}1
 
 # Mount the USB device
 mkdir -p /mnt/usb
@@ -59,24 +56,25 @@ mount ${USB_DEVICE}1 /mnt/usb
 
 # Mount the ISO file
 mkdir -p /mnt/iso
-if ! mount -o loop ${ISO_FILE} /mnt/iso; then
-    echo "Failed to mount ISO. Exiting."
-    exit 1
-fi
+mount -o loop $ISO_FILE /mnt/iso
 
 # Copy files from the ISO to the USB
 cp -r /mnt/iso/* /mnt/usb/
 
-# Install GRUB bootloader
-grub-install --target=i386-pc --boot-directory=/mnt/usb/boot ${USB_DEVICE}
-grub-mkconfig -o /mnt/usb/boot/grub/grub.cfg
+# Installing a Microsoft-compatible Master Boot Record (MBR)
+# ms-sys might be used if available (check your distribution's repository)
+ms-sys -7 -w  ${USB_DEVICE}  # This writes a Windows 7 MBR; use -w for Windows 10
+
+# Alternatively, use dd if ms-sys is not available:
+# dd if=/usr/lib/syslinux/mbr/mbr.bin of=${USB_DEVICE}
 
 # Unmount everything
 umount /mnt/iso
 umount /mnt/usb
 
-# Safely remove directories if empty
-rmdir /mnt/iso 2>/dev/null
-rmdir /mnt/usb 2>/dev/null
+# Remove mount directories
+rmdir /mnt/iso
+rmdir /mnt/usb
 
-echo "USB is now bootable with Arch Linux using GRUB."
+echo "USB is now bootable with Windows!"
+
