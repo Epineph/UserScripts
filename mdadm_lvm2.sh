@@ -87,7 +87,7 @@ sudo sed -i 's/^HOOKS=.*$/HOOKS=(base udev autodetect modconf block mdadm_udev l
 cp /etc/mkinitcpio.conf /mnt/etc/mkinitcpio.conf
 cp /etc/pacman.conf /mnt/etc/pacman.conf
 
-pacstrap -P -K /mnt base base-devel linux linux-headers nvidia nvidia-settings nvidia-utils linux-firmware intel-ucode efibootmgr networkmanager xdg-user-dirs xdg-utils sudo nano vim mtools dosfstools java-runtime python-setuptools ntfs-3g archinstall archiso arch-install-scripts
+pacstrap -P -K /mnt base base-devel lvm2 mdadm linux linux-headers nvidia nvidia-settings nvidia-utils linux-firmware intel-ucode efibootmgr networkmanager xdg-user-dirs xdg-utils sudo nano vim mtools dosfstools java-runtime python-setuptools ntfs-3g archinstall archiso arch-install-scripts
 
 sleep 2
 
