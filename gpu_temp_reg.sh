@@ -47,11 +47,7 @@ while true; do
 done
 EOF
 
-# Make the script executable
-sudo chown $USER "$SCRIPT_PATH"
-sudo chmod +rwx "$SCRIPT_PATH"
-sudo chown $USER "$SERVICE_PATH"
-sudo chmod u+rwx "$SERVICE_PATH"
+
 
 # Create systemd service unit file
 cat << EOF > "$SERVICE_PATH"
@@ -63,11 +59,18 @@ After=network.target
 Type=simple
 ExecStart=$SCRIPT_PATH
 Restart=on-failure
-User=root
+User=heini
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+
+# Make the script executable
+sudo chown $USER "$SCRIPT_PATH"
+sudo chmod +rwx "$SCRIPT_PATH"
+sudo chown $USER "$SERVICE_PATH"
+sudo chmod u+rwx "$SERVICE_PATH"
 
 # Reload systemd, start and enable the service
 systemctl daemon-reload
