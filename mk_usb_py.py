@@ -32,6 +32,8 @@ check_and_install_package('python-prompt_toolkit')
 from prompt_toolkit import prompt
 from prompt_toolkit.completion import PathCompleter, WordCompleter
 
+print(run_command(f"lsblk"))
+
 def choose_iso():
     """Let the user choose an ISO file interactively."""
     iso_completer = PathCompleter(only_directories=False, expanduser=True)
