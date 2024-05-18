@@ -5,7 +5,7 @@ SCRIPT_PATH="/usr/local/bin/gpu_temp_reg.sh"
 SERVICE_PATH="/etc/systemd/system/cputemp_regulator.service"
 
 # Write the CPU temperature regulation script
-sudo cat << 'EOF' > "$SCRIPT_PATH"
+cat << 'EOF' > "$SCRIPT_PATH"
 #!/bin/bash
 # Define temperature thresholds and frequency settings
 TEMP_HIGH=90
@@ -54,7 +54,7 @@ sudo chown $USER "$SERVICE_PATH"
 sudo chmod u+rwx "$SERVICE_PATH"
 
 # Create systemd service unit file
-sudo cat << EOF > "$SERVICE_PATH"
+cat << EOF > "$SERVICE_PATH"
 [Unit]
 Description=CPU Temperature Regulation
 After=network.target
