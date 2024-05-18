@@ -1,6 +1,16 @@
 #!/bin/bash
 
 # Function to generate a GPG key
+
+LINE_TO_ADD='export GPG_TTY=$(tty)'
+FILE_TO_EDIT="$HOME/.zshrc"
+
+# Check if the line is already in the file
+if ! grep -qF "$LINE_TO_ADD" "$FILE_TO_EDIT"; then
+  echo "$LINE_TO_ADD" | sudo tee -a "$FILE_TO_EDIT"
+fi
+
+
 generate_gpg_key() {
   echo "Generating a new GPG key..."
   gpg --full-generate-key
