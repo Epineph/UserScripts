@@ -25,6 +25,7 @@ generate_gpg_key() {
   echo "GPG key generated and Git configured to use it for signing commits."
   echo "Your GPG public key to add to GitHub:"
   gpg --armor --export "$GPG_KEY_ID"
+  echo "export GPG_TTY=$(tty)" | sudo tee -a $HOME/.zshrc
 }
 
 # Function to generate an SSH key
