@@ -50,6 +50,8 @@ EOF
 # Make the script executable
 sudo chown $USER "$SCRIPT_PATH"
 sudo chmod +rwx "$SCRIPT_PATH"
+sudo chown $USER "$SERVICE_PATH"
+sudo chmod u+rwx "$SERVICE_PATH"
 
 # Create systemd service unit file
 sudo cat << EOF > "$SERVICE_PATH"
