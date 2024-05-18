@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Define paths
-SCRIPT_PATH="/home/heini/repos/gpu_temp_reg.sh"
+SCRIPT_PATH="/usr/local/bin/gpu_temp_reg.sh"
 SERVICE_PATH="/etc/systemd/system/cputemp_regulator.service"
 
 # Write the CPU temperature regulation script
-cat << 'EOF' > "$SCRIPT_PATH"
+sudo cat << 'EOF' > "$SCRIPT_PATH"
 #!/bin/bash
 # Define temperature thresholds and frequency settings
 TEMP_HIGH=90
@@ -48,10 +48,11 @@ done
 EOF
 
 # Make the script executable
-chmod +x "$SCRIPT_PATH"
+sudo chown $USER "$SCRIPT_PATH"
+sudo chmod +rwx "$SCRIPT_PATH"
 
 # Create systemd service unit file
-cat << EOF > "$SERVICE_PATH"
+sudo cat << EOF > "$SERVICE_PATH"
 [Unit]
 Description=CPU Temperature Regulation
 After=network.target
