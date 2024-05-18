@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define paths
-SCRIPT_PATH="/usr/local/bin/cputemp_regulator.sh"
+SCRIPT_PATH="/home/heini/repos/gpu_temp_reg.sh"
 SERVICE_PATH="/etc/systemd/system/cputemp_regulator.service"
 
 # Write the CPU temperature regulation script
