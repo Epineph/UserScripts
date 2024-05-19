@@ -129,7 +129,7 @@ HOSTS
 useradd -m -G wheel -s /bin/bash heini
 
 # Configure sudoers
-sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) NOPASSWD: ALL/' /etc/sudoers
 echo "heini ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 # Configure cpupower
