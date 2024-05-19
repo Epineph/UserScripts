@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Define variables
-REMOTE_USER="root"
-REMOTE_HOST="192.168.1.71"
-REMOTE_PATH="/mnt/home/heini/fonts_tmp_folder"
+REMOTE_USER="heini"
+REMOTE_HOST="192.168.1.74"
+REMOTE_PATH="/home/heini/.transferred_files"
 
 # Function to transfer files
 transfer_files() {
