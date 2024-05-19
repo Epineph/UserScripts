@@ -2,7 +2,7 @@
 
 # Function to generate a GPG key
 
-LINE_TO_ADD='export GPG_TTY=$(tty)'
+LINE_TO_ADD="export GPG_TTY=$(tty)"
 FILE_TO_EDIT="$HOME/.zshrc"
 
 # Check if the line is already in the file
@@ -26,16 +26,16 @@ generate_gpg_key() {
     git config --global commit.gpgsign true
   fi
   if [ -f ~/.bashrc ]; then
-    echo -e '\nexport GPG_TTY=$(tty)' >> ~/.bashrc
+    echo -e "\nexport GPG_TTY=$(tty)" >> ~/.bashrc
     source ~/.bashrc
   elif [ -f ~/.zshrc ]; then
-    echo -e '\nexport GPG_TTY=$(tty)' >> ~/.zshrc
+    echo -e "\nexport GPG_TTY=$(tty)" >> ~/.zshrc
     source ~/.zshrc
   fi
   echo "GPG key generated and Git configured to use it for signing commits."
   echo "Your GPG public key to add to GitHub:"
   gpg --armor --export "$GPG_KEY_ID"
-  echo "export GPG_TTY=$(tty)" | sudo tee -a $HOME/.zshrc
+  echo "export GPG_TTY=$(tty)" | sudo tee -a "$HOME/".zshrc
 }
 
 # Function to generate an SSH key

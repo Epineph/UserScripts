@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Define variables
-REMOTE_USER="heini"
-REMOTE_HOST="192.168.1.74"
-REMOTE_PATH="/home/heini/Documents"
+REMOTE_USER="root"
+REMOTE_HOST="192.168.1.71"
+REMOTE_PATH="/mnt/home/heini/fonts_tmp_folder"
 
 # Function to transfer files
 transfer_files() {
@@ -22,7 +22,7 @@ transfer_files() {
 
 # Main loop to collect directories
 while true; do
-    read -p "Enter the local directory path to transfer (or press Enter to finish): " LOCAL_PATH
+    read -r -p "Enter the local directory path to transfer (or press Enter to finish): " LOCAL_PATH
     if [ -z "$LOCAL_PATH" ]; then
         break
     fi

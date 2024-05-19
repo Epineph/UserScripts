@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -e  # Exit immediately if a command exits with a non-zero status
+set -e  # Exit immediately if a command exits with a non-zero status
 
 # Enable multilib repository and parallel downloads
 sudo sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
@@ -25,20 +25,20 @@ if [ "$(echo "$selected_disks" | wc -l)" -lt 2 ]; then
 fi
 
 # Stop any existing RAID arrays
-mdadm --zero-superblock --force "$(for disk in $selected_disks; do echo "${disk}p2"; done)"
+mdadm --zero-superblock --force $(for disk in $selected_disks; do echo "${disk}p2"; done)
 
 # Wipe disks
 for disk in $selected_disks; do
-    wipefs --all --force "$disk"
+    wipefs --all --force $disk
 done
 
 # Partition Disks
 for disk in $selected_disks; do
     echo "Partitioning $disk..."
-    parted "$disk" --script mklabel gpt
-    parted "$disk" --script mkpart ESP fat32 1MiB 2049MiB
-    parted "$disk" --script set 1 esp on
-    parted "$disk "--script mkpart primary 2049MiB 100%
+    parted $disk --script mklabel gpt
+    parted $disk --script mkpart ESP fat32 1MiB 2049MiB
+    parted $disk --script set 1 esp on
+    parted $disk --script mkpart primary 2049MiB 100%
 done
 
 # Ensure partitions are recognized
@@ -47,7 +47,7 @@ partprobe
 # Create RAID-0 Array
 echo "Setting up RAID-0 (striping) across selected disks"
 partitions=$(for disk in $selected_disks; do echo "${disk}p2"; done)
-mdadm --create --verbose /dev/md0 --level=0 --raid-devices="$(echo "$selected_disks" | wc -l)" $partitions
+mdadm --create --verbose /dev/md0 --level=0 --raid-devices=$(echo "$selected_disks" | wc -l) $partitions
 
 # Wait for RAID array to initialize
 sleep 10
@@ -65,7 +65,7 @@ yes | lvcreate -l 100%FREE volgroup0 -n lv_home
 
 # Format Partitions
 for disk in $selected_disks; do
-    mkfs.fat -F32 "${disk}"p1
+    mkfs.fat -F32 ${disk}p1
 done
 mkfs.ext4 /dev/volgroup0/lv_root
 mkfs.ext4 /dev/volgroup0/lv_home
@@ -74,24 +74,27 @@ mkswap /dev/volgroup0/lv_swap
 # Mount Partitions
 mount /dev/volgroup0/lv_root /mnt
 
-mkdir -p /mnt/{boot/efi,home,etc}
-mount "$(echo "$selected_disks "| awk '{print $1"p1"}')" /mnt/boot/efi
+mkdir -p /mnt/{boot/efi,home,proc,sys,dev,etc}
+mount $(echo $selected_disks | awk '{print $1"p1"}') /mnt/boot/efi
 mount /dev/volgroup0/lv_home /mnt/home
 swapon /dev/volgroup0/lv_swap
 
 # Bind mount necessary filesystems
+mount --bind /proc /mnt/proc
+mount --bind /sys /mnt/sys
+mount --bind /dev /mnt/dev
 
 # Configure mdadm
 mdadm --detail --scan | tee -a /mnt/etc/mdadm.conf
 
 # Configure mkinitcpio
-sed -i -e 's/^HOOKS=.*$/HOOKS=(base systemd udev autodetect modconf block mdadm_udev lvm2 filesystems keyboard fsck)/' etc/mkinitcpio.conf
+sed -i -e 's/^HOOKS=.*$/HOOKS=(base systemd udev autodetect modconf block mdadm_udev lvm2 filesystems keyboard fsck)/' /etc/mkinitcpio.conf
 cp /etc/mkinitcpio.conf /mnt/etc/mkinitcpio.conf
 cp /etc/pacman.conf /mnt/etc/pacman.conf
 
 
 # Pacstrap base system
-pacstrap -P -K /mnt base base-devel lvm2 mdadm linux linux-headers nvidia-dkms nvidia-settings nvidia-utils linux-firmware intel-ucode efibootmgr networkmanager xdg-user-dirs xdg-utils sudo nano vim mtools dosfstools java-runtime python-setuptools ntfs-3g archinstall archiso arch-install-scripts openssh git grub cpupower
+pacstrap -P -K /mnt base base-devel lvm2 mdadm linux linux-headers nvidia nvidia-settings nvidia-utils linux-firmware intel-ucode efibootmgr networkmanager xdg-user-dirs xdg-utils sudo nano vim mtools dosfstools java-runtime python-setuptools ntfs-3g archinstall archiso arch-install-scripts openssh git grub cpupower
 
 # Generate fstab
 genfstab -U /mnt >> /mnt/etc/fstab
@@ -150,7 +153,16 @@ sed -i 's/^#TCPKeepAlive yes/TCPKeepAlive yes/' /etc/ssh/sshd_config
 sed -i 's/^#PermitUserEnvironment no/PermitUserEnvironment yes/' /etc/ssh/sshd_config
 sed -i 's/^#PermitTunnel no/PermitTunnel yes/' /etc/ssh/sshd_config
 
-# Install
+# Install and configure GRUB
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=arch_grub --recheck
+grub-mkconfig -o /boot/grub/grub.cfg
+
+# Set root password interactively
+sudo -u root /bin/bash -c 'echo "Insert root password: " && read -s root_password && echo -e "$root_password\n$root_password" | passwd root'
+
+# Set password for user heini interactively
+sudo -u root /bin/bash -c 'echo "Insert heini password: " && read -s heini_password && echo -e "$heini_password\n$heini_password" | passwd heini'
+
 EOF
 
 # Switch to user heini and set up repositories
