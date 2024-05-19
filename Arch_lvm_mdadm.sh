@@ -25,20 +25,20 @@ if [ "$(echo "$selected_disks" | wc -l)" -lt 2 ]; then
 fi
 
 # Stop any existing RAID arrays
-mdadm --zero-superblock --force $(for disk in $selected_disks; do echo "${disk}p2"; done)
+mdadm --zero-superblock --force "$(for disk in $selected_disks; do echo "${disk}p2"; done)"
 
 # Wipe disks
 for disk in $selected_disks; do
-    wipefs --all --force $disk
+    wipefs --all --force "$disk"
 done
 
 # Partition Disks
 for disk in $selected_disks; do
     echo "Partitioning $disk..."
-    parted $disk --script mklabel gpt
-    parted $disk --script mkpart ESP fat32 1MiB 2049MiB
-    parted $disk --script set 1 esp on
-    parted $disk --script mkpart primary 2049MiB 100%
+    parted "$disk" --script mklabel gpt
+    parted "$disk" --script mkpart ESP fat32 1MiB 2049MiB
+    parted "$disk" --script set 1 esp on
+    parted "$disk "--script mkpart primary 2049MiB 100%
 done
 
 # Ensure partitions are recognized
@@ -47,7 +47,7 @@ partprobe
 # Create RAID-0 Array
 echo "Setting up RAID-0 (striping) across selected disks"
 partitions=$(for disk in $selected_disks; do echo "${disk}p2"; done)
-mdadm --create --verbose /dev/md0 --level=0 --raid-devices=$(echo "$selected_disks" | wc -l) $partitions
+mdadm --create --verbose /dev/md0 --level=0 --raid-devices="$(echo "$selected_disks" | wc -l)" $partitions
 
 # Wait for RAID array to initialize
 sleep 10
@@ -65,7 +65,7 @@ yes | lvcreate -l 100%FREE volgroup0 -n lv_home
 
 # Format Partitions
 for disk in $selected_disks; do
-    mkfs.fat -F32 ${disk}p1
+    mkfs.fat -F32 "${disk}"p1
 done
 mkfs.ext4 /dev/volgroup0/lv_root
 mkfs.ext4 /dev/volgroup0/lv_home
@@ -75,7 +75,7 @@ mkswap /dev/volgroup0/lv_swap
 mount /dev/volgroup0/lv_root /mnt
 
 mkdir -p /mnt/{boot/efi,home,etc}
-mount $(echo $selected_disks | awk '{print $1"p1"}') /mnt/boot/efi
+mount "$(echo "$selected_disks "| awk '{print $1"p1"}')" /mnt/boot/efi
 mount /dev/volgroup0/lv_home /mnt/home
 swapon /dev/volgroup0/lv_swap
 

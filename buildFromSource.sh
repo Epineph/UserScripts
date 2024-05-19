@@ -10,7 +10,7 @@ build_cmake() {
     echo "Detected CMake project."
     mkdir -p build && cd build
     cmake -DCMAKE_BUILD_TYPE=Release ..
-    cmake --build . --config Release -j$(nproc)
+    cmake --build . --config Release -j"$(nproc)"
     sudo cmake --build . --config Release --target install
 }
 
@@ -18,7 +18,7 @@ build_cmake() {
 build_configure() {
     echo "Detected configure script."
     ./configure
-    make -j$(nproc)
+    make -j"$(nproc)"
     sudo make install
 }
 
