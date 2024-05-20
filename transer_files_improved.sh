@@ -1,16 +1,16 @@
 #!/bin/bash
 
 # Define variables
-REMOTE_USER="heini"
-REMOTE_HOST="192.168.1.74"
-REMOTE_PATH="/home/heini/.transferred_files"
+REMOTE_USER="arch"
+REMOTE_HOST="217.172.84.115"
+REMOTE_PATH="/home/arch/received_files"
 
 # Function to transfer files
 transfer_files() {
     local local_path=$1
     echo "Starting file transfer from $local_path to $REMOTE_USER@$REMOTE_HOST:$REMOTE_PATH"
     
-    # Rsync command to transfer files
+    #  sync command to transfer files
     rsync -avz -e "ssh" "$local_path" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_PATH"
     
     if [ $? -eq 0 ]; then
