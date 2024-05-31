@@ -52,12 +52,6 @@ fi
 # Enter the build directory
 cd $LLVM_BUILD_DIR
 
-# Check for OCaml dependencies
-if ! command -v ocamlc > /dev/null || ! command -v ocamlfind > /dev/null; then
-    echo "OCaml and OCaml Findlib are required. Please install them and try again."
-    exit 1
-fi
-
 # Configure the build
 cmake -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
@@ -66,6 +60,7 @@ cmake -G Ninja \
     -DLLVM_ENABLE_BINDINGS="OCaml" \
     -DOCAML_EXECUTABLE=$(which ocaml) \
     -DLLVM_TARGETS_TO_BUILD=$LLVM_TARGETS \
+    -DLLVM_ENABLE_LLD=ON \
     -DLLVM_ENABLE_LTO=Thin \
     $INSTALL_PREFIX \
     $LLVM_SRC_DIR/llvm
