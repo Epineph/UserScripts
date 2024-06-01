@@ -4,11 +4,16 @@
 # If you decide to change them, remember to change them                        #
 # throughout the script                                                        #
 ################################################################################
-USER_DIR="/home/$USER"
-BUILD_DIR="$USER_DIR/builtPackages"
-ISO_HOME="$USER_DIR/ISOBUILD/zfsiso"
-ISO_LOCATION="$ISO_HOME/ISOOUT/"
-ZFS_REPO_DIR="$ISO_HOME/zfsrepo"
+USER_DIR="/home/$USER"                                                         #
+BUILD_DIR="$USER_DIR/builtPackages"                                            #
+PY_URL="https://raw.githubusercontent.com/Epineph/zfsArch/main/test.py"        #
+ISO_HOME="$USER_DIR/ISOBUILD/zfsiso"                                           #
+ISO_LOCATION="$ISO_HOME/ISOOUT/"                                               #
+ISO_FILES="$ISO_LOCATION/archlinux-*.iso"                                      #
+AUR_HELPER_DIR="$AUR_HELPER_DIR"                                               #
+ZFS_REPO_DIR="$ISO_HOME/zfsrepo"                                               #
+GITHUB_REPOSITORY="$git_author/$repo_name"                                     #
+AUR_URL="https://aur.archlinux.org"                                            #
 ################################################################################
 
 check_and_install_packages() {
@@ -44,8 +49,7 @@ check_and_install_packages() {
   fi
 }
 
-check_and_install_packages archiso python-prompt_toolkit python-pip fzf bat python-virtualenvwrapper
-
+check_and_install_packages archiso
 clone() {
     # Ensure the build directory exists
     mkdir -p "$BUILD_DIR"
@@ -80,42 +84,80 @@ clone() {
     fi
 }
 
-aur_packages=("gptfdisk-git" "python-pypdf2")
+read -p "Do you want to burn the ISO to USB after building has finished?\
+(yes/no): " confirmation
 
+#########################################################################
+# The packages included in the list 'aur_packages' will be built        #
+# and added to a custom repository which the iso                        #
+# will use and include in the resulting image.                          #
+#########################################################################
+
+aur_packages=("gptfdisk-git" "yay") 
+
+# Loop to clone and build each package
 for pkg in "${aur_packages[@]}"; do
     (clone "https://aur.archlinux.org/${pkg}.git" build --syncdeps)
 done
 
+# Ensure the ISO build directory exists
+
 cd $HOME
 
 VIRT_ENV_NAME="VirtPyEnv"
+
 virtualenv $VIRT_ENV_NAME --system-site-packages --symlinks
+
 source "$HOME/VirtPyEnv/bin/activate"
 
+
 mkdir -p "$USER_DIR/ISOBUILD"
+
 cp -r /usr/share/archiso/configs/releng $USER_DIR/ISOBUILD/
+
 sleep 1
+
 cd $USER_DIR/ISOBUILD
+
 mv releng/ zfsiso
 
+
+
+# Ensure the ZFS repository directory exists
 mkdir -p "$ZFS_REPO_DIR"
+
 cd $ZFS_REPO_DIR
 
+# Loop to copy the built packages
 for pkg in "${aur_packages[@]}"; do
     cp "$BUILD_DIR/$pkg"/*.zst .
 done
 
-sudo repo-add zfsrepo.db.tar.gz *.zst
 
+
+sudo repo-add zfsrepo.db.tar.gz *.zs
+
+# Ensure the necessary packages are installed
+check_and_install_packages python-prompt_toolkit python-pip fzf bat python-virtualenvwrapper
+
+# Install required Python packages
+pip install PyPDF2 prompt_toolkit
+
+# Run the Python script as a subshell
+
+# Ensure the ISO build directory exists
 mkdir -p "$ISO_HOME/airootfs/etc"
 mkdir -p "$ISO_HOME/airootfs/etc/pacman.d"
 
+# Copy custom configuration files
 cp /mnt/data/pacman.conf "$ISO_HOME/airootfs/etc/pacman.conf"
 cp /mnt/data/sshd_config "$ISO_HOME/airootfs/etc/ssh/sshd_config"
 
+# Build the ISO
 cd "$ISO_HOME"
 sudo mkarchiso -v -w WORK -o ISOOUT .
 
+# Chroot into the new ISO to sign the keys
 mount --bind /dev "$ISO_HOME/airootfs/dev"
 mount --bind /proc "$ISO_HOME/airootfs/proc"
 mount --bind /sys "$ISO_HOME/airootfs/sys"
@@ -123,6 +165,8 @@ mount --bind /sys "$ISO_HOME/airootfs/sys"
 chroot "$ISO_HOME/airootfs" /bin/bash <<EOF
 pacman-key --init
 pacman-key --populate
+
+
 EOF
 
 umount "$ISO_HOME/airootfs/dev"
@@ -130,8 +174,6 @@ umount "$ISO_HOME/airootfs/proc"
 umount "$ISO_HOME/airootfs/sys"
 
 echo "Custom ISO creation process complete!"
-
-# Run the Python script as a subshell
 python3 - << 'END_PYTHON'
 import os
 import subprocess
@@ -206,4 +248,7 @@ def create_bootable_usb():
 
 create_bootable_usb()
 END_PYTHON
+
+cd $HOME 
+
 
