@@ -94,4 +94,69 @@ sleep 2
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
-echo "Pre-pacstrap setup is complete. You can now proceed with pacstrap to install the base system."
+# Chroot into the new system and complete configuration
+arch-chroot /mnt /bin/bash <<EOF
+
+# Set up localization and timezone
+echo "en_DK.UTF-8 UTF-8" >> /etc/locale.gen
+locale-gen
+echo "LANG=en_DK.UTF-8" > /etc/locale.conf
+echo "KEYMAP=dk" > /etc/vconsole.conf
+ln -sf /usr/share/zoneinfo/Europe/Copenhagen /etc/localtime
+hwclock --systohc
+
+# Set hostname and hosts
+echo "archlinux-desktop" > /etc/hostname
+echo "127.0.0.1 localhost" >> /etc/hosts
+echo "127.0.1.1 archlinux-desktop.localdomain archlinux-desktop" >> /etc/hosts
+
+# Set root password
+echo "root:132" | chpasswd
+
+# Create user heini
+useradd -m -G wheel -s /bin/bash heini
+echo "heini:132" | chpasswd
+
+# Configure sudoers
+sed -i 's/^# \(%wheel ALL=(ALL:ALL) ALL\)/\1/' /etc/sudoers
+echo "heini ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+# Change user to heini and set up repositories
+su - heini <<EOF2
+cd \$HOME
+mkdir repos
+cd repos
+git clone https://github.com/Epineph/UserScripts
+git clone https://github.com/Epineph/generate_install_scripts
+git clone https://github.com/JaKooLit/Arch-Hyprland
+git clone https://aur.archlinux.org/yay.git
+git clone https://aur.archlinux.org/paru.git
+
+# Copy script and update .bashrc
+sudo cp /home/heini/repos/UserScripts/log_scripts/gen_log.sh /usr/local/bin/gen_log
+echo 'export PATH=/usr/local/bin:\$PATH' >> /home/heini/.bashrc
+
+# Set permissions
+sudo chown -R heini:heini /home/heini/repos
+sudo chmod -R u+rwx /home/heini/repos
+sudo chown -R heini:heini /usr/local/bin
+sudo chmod -R u+rwx /usr/local/bin
+
+# Source .bashrc
+source /home/heini/.bashrc
+
+# Build and install yay and paru
+cd /home/heini/repos/yay
+makepkg -si --noconfirm
+
+cd /home/heini/repos/paru
+makepkg -si --noconfirm
+EOF2
+
+# Install and configure GRUB
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=arch_grub --recheck
+grub-mkconfig -o /boot/grub/grub.cfg
+
+EOF
+
+echo "Installation and configuration complete. Please reboot into your new system."
