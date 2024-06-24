@@ -5,8 +5,11 @@
     "grunt": "^1.6.1",
     "gulp": "^5.0.0",
     "lerna": "^8.1.3",
-    "tch": "^0.9.5",
+    "tch": "^0.3.2",
     "typescript": "^5.4.5",
     "webpack": "^5.91.0"
+  },
+  "devDependencies": {
+    "@trunkio/launcher": "^1.3.1"
   }
 }
