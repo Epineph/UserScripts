@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directory where logs will be stored
-LOG_DIR="/home/heini/repos/generate_install_command"
+LOG_DIR="$HOME/repos/generate_install_command"
 
 # Ensure the directory exists
 if [[ ! -d "$LOG_DIR" ]]; then
