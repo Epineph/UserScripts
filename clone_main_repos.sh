@@ -24,18 +24,12 @@ repos=(
     "bat https://github.com/sharkdp/bat.git"
     "fd https://github.com/sharkdp/fd.git"
     "fzf https://github.com/junegunn/fzf.git"
-    "numba https://github.com/numba/numba"
-    "ocaml https://github.com/ocaml/ocaml"
-    "ipykernel https://github.com/ipython/ipykernel"
-    "jupyterlab https://github.com/jupyterlab/jupyterlab"
-    "ipython https://github.com/ipython/ipython"
-    "jupyter_client https://github.com/jupyter/jupyter_client"
-    "qtconsole https://github.com/jupyter/qtconsole"
-    "jupyter https://github.com/jupyter/jupyter"
-    "terminado https://github.com/jupyter/terminado"
-    "jupyter_core https://github.com/jupyter/jupyter_core"
     "ocaml https://github.com/ocaml/ocaml"
     "doxygen https://github.com/doxygen/doxygen"
+	"generate_install_command https://github.com/Epineph/generate_install_command.git"
+	"UserScripts https://github.com/Epineph/UserScripts.git"
+	"yay https://aur.archlinux.org/yay.git"
+	"paru https://aur.archlinux.org/paru.git"
 )
 
 # Directory to store repositories
