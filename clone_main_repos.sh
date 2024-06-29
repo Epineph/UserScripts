@@ -26,10 +26,10 @@ repos=(
     "fzf https://github.com/junegunn/fzf.git"
     "ocaml https://github.com/ocaml/ocaml"
     "doxygen https://github.com/doxygen/doxygen"
-	"generate_install_command https://github.com/Epineph/generate_install_command.git"
-	"UserScripts https://github.com/Epineph/UserScripts.git"
-	"yay https://aur.archlinux.org/yay.git"
-	"paru https://aur.archlinux.org/paru.git"
+    "generate_install_command https://github.com/Epineph/generate_install_command.git"
+    "UserScripts https://github.com/Epineph/UserScripts.git"
+    "yay https://aur.archlinux.org/yay.git"
+    "paru https://aur.archlinux.org/paru.git"
 )
 
 # Directory to store repositories
