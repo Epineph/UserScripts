@@ -24,13 +24,13 @@ if [ "$SIGN_ALL_COMMITS" = "y" ]; then
 fi
 
 # Add GPG_TTY to .bashrc (or .zshrc if using zsh)
-if [ -f ~/.bashrc ]; then
-  echo -e '\nexport GPG_TTY=$(tty)' >> ~/.bashrc
-  source ~/.bashrc
-elif [ -f ~/.zshrc ]; then
-  echo -e '\nexport GPG_TTY=$(tty)' >> ~/.zshrc
-  source ~/.zshrc
-fi
+#if [ -f ~/.bashrc ]; then
+#  echo -e '\nexport GPG_TTY=$(tty)' >> ~/.bashrc
+#  source ~/.bashrc
+#elif [ -f ~/.zshrc ]; then
+#  echo -e '\nexport GPG_TTY=$(tty)' >> ~/.zshrc
+#  source ~/.zshrc
+#fi
 
 echo "GPG key generated and Git configured to use it for signing commits."
 

@@ -26,13 +26,15 @@ countries_list=$(IFS=, ; echo "${countries[*]}")
 # Run reflector to find the 20 fastest mirrors
 sudo reflector --verbose \
   --country $countries_list \
-  --latest 100 \
   --age 12 \
-  --fastest 80 \
-  --number 50 \
+  --latest 150 \
+  --number 150 \
+  --fastest 120 \
+  --cache-timeout 1800 \
   --download-timeout 10 \
   --connection-timeout 10 \
   --sort rate \
+  --threads 5 \
   --save /etc/pacman.d/mirrorlist
 
 echo "Mirrorlist updated successfully!"
