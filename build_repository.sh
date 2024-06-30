@@ -85,15 +85,15 @@ build_project() {
         if ask_yes_no "Do you want to use cmake?"; then
             cd build || exit 1
             if ask_yes_no "Do you want to use Ninja?"; then
-                cmake -GNinja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=/home/heini/repos/vcpkg/scripts/buildsystems/vcpkg.cmake" ..
+                cmake -GNinja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=/home/heini/repos/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_INSTALL_PREFIX=$HOME/bin ..
                 ninja -j$(nproc)
             else
-                cmake -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=/home/heini/repos/vcpkg/scripts/buildsystems/vcpkg.cmake" ..
+                cmake -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=/home/heini/repos/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_INSTALL_PREFIX=$HOME/bin ..
                 cmake --build . --config Release -j$(nproc)
             fi
         fi
     elif [ -f "configure" ]; then
-        ./configure
+        ./configure --prefix=$HOME/bin
         make -j$(nproc)
     elif [ -f "Makefile" ]; then
         make -j$(nproc)
@@ -135,15 +135,11 @@ install_project() {
 
     if [ -f "CMakeLists.txt" ]; then
         cd build || exit 1
-        make install DESTDIR="$install_dir"
-        mv "$install_dir/usr/local/bin/"* "$install_dir/"
-        rm -r "$install_dir/usr/local"
+        make install
     elif [ -f "configure" ]; then
-        make install DESTDIR="$install_dir"
-        mv "$install_dir/usr/local/bin/"* "$install_dir/"
-        rm -r "$install_dir/usr/local"
+        make install
     elif [ -f "Makefile" ]; then
-        make install PREFIX="$install_dir"
+        make install
     elif [ -f "Cargo.toml" ]; then
         cargo install --path . --root "$install_dir"
     elif [ -f "setup.py" ]; then
