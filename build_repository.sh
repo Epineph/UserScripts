@@ -85,11 +85,11 @@ build_project() {
         if ask_yes_no "Do you want to use cmake?"; then
             cd build || exit 1
             if ask_yes_no "Do you want to use Ninja?"; then
-                sudo cmake -GNinja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=/home/heini/repos/vcpkg/scripts/buildsystems/vcpkg.cmake" ..
-                sudo ninja -j$(nproc)
+                cmake -GNinja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=/home/heini/repos/vcpkg/scripts/buildsystems/vcpkg.cmake" ..
+                ninja -j$(nproc)
             else
-                sudo cmake -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=/home/heini/repos/vcpkg/scripts/buildsystems/vcpkg.cmake" ..
-                sudo cmake --build . --config Release -j$(nproc)
+                cmake -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=/home/heini/repos/vcpkg/scripts/buildsystems/vcpkg.cmake" ..
+                cmake --build . --config Release -j$(nproc)
             fi
         fi
     elif [ -f "configure" ]; then
@@ -128,31 +128,38 @@ build_project() {
     fi
 }
 
-# Install the project based on available files
+# Install the project based on available files to $HOME/bin
 install_project() {
+    install_dir="$HOME/bin"
+    mkdir -p "$install_dir"
+
     if [ -f "CMakeLists.txt" ]; then
         cd build || exit 1
-        sudo make install
+        make install DESTDIR="$install_dir"
+        mv "$install_dir/usr/local/bin/"* "$install_dir/"
+        rm -r "$install_dir/usr/local"
     elif [ -f "configure" ]; then
-        sudo make install
+        make install DESTDIR="$install_dir"
+        mv "$install_dir/usr/local/bin/"* "$install_dir/"
+        rm -r "$install_dir/usr/local"
     elif [ -f "Makefile" ]; then
-        sudo make install
+        make install PREFIX="$install_dir"
     elif [ -f "Cargo.toml" ]; then
-        cargo install --path .
+        cargo install --path . --root "$install_dir"
     elif [ -f "setup.py" ]; then
-        python setup.py install
+        python setup.py install --prefix="$install_dir"
     elif [ -f "pyproject.toml" ]; then
-        python -m pip install -e .
+        python -m pip install --prefix="$install_dir" -e .
     elif [ -f "package.json" ]; then
         if command -v yarn &> /dev/null; then
-            yarn global add .
+            yarn global add . --prefix "$install_dir"
         elif command -v npm &> /dev/null; then
-            npm install -g .
+            npm install -g . --prefix "$install_dir"
         fi
     elif [ -f "go.mod" ]; then
-        go install ./...
+        go install ./... --prefix "$install_dir"
     elif [ -f "Makefile.PL" ]; then
-        sudo make install
+        make install PREFIX="$install_dir"
     else
         echo "No recognizable installation method found."
         exit 1
