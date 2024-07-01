@@ -28,7 +28,6 @@ sudo reflector --verbose \
   --country $countries_list \
   --age 12 \
   --latest 150 \
-  --number 150 \
   --fastest 120 \
   --cache-timeout 1800 \
   --download-timeout 10 \
