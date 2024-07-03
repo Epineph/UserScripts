@@ -28,12 +28,12 @@ sudo reflector --verbose \
   --country $countries_list \
   --age 12 \
   --latest 150 \
-  --fastest 120 \
+  --fastest 150 \
   --cache-timeout 1800 \
   --download-timeout 10 \
   --connection-timeout 10 \
   --sort rate \
-  --threads 5 \
+  --threads 3 \
   --save /etc/pacman.d/mirrorlist
 
 echo "Mirrorlist updated successfully!"

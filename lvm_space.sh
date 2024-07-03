@@ -1,9 +1,11 @@
 #!/bin/bash
 
+vg_name="vg0"
+
 # Define the logical volumes and their mount points
-lv_root="/dev/mapper/vg0-lv_root"
-lv_swap="/dev/mapper/vg0-lv_swap"
-lv_home="/dev/mapper/vg0-lv_home"
+lv_root="/dev/mapper/$vg_name-lv_root"
+lv_swap="/dev/mapper/$vg_name-lv_swap"
+lv_home="/dev/mapper/$vg_name-lv_home"
 mount_root="/"
 mount_home="/home"
 
