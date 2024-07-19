@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Define variables
-REMOTE_USER="arch"
-REMOTE_HOST="217.172.84.115"
-REMOTE_PATH="/home/arch/received_files"
+REMOTE_USER="heini"
+REMOTE_HOST="192.168.1.71"
+REMOTE_PATH="$HOME/Documents/pkg_installs"
 
 # Function to transfer files
 transfer_files() {
