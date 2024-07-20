@@ -88,8 +88,10 @@ mount --bind /sys /mnt/sys
 mount --bind /run /mnt/run
 mount --make-rslave /mnt/run
 
-base udev autodetect microcode modconf kms keyboard keymap consolefont block
-sed -i 's/^HOOKS=.*$/HOOKS=(base udev microcode modconf kms keyboard keymap consolefont block  mdadm_udev lvm2 encrypt filesystems keyboard fsck)/' /etc/mkinitcpio.conf
+
+#sed -i 's/^HOOKS=.*$/HOOKS=(base udev microcode modconf kms keyboard keymap consolefont block  mdadm_udev lvm2 encrypt filesystems keyboard fsck)/' /etc/mkinitcpio.conf
+
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block lvm2 encrypt filesystems fsck)/' /etc/mkinitcpio.conf
 
 # Chroot into the new environment
 chroot /mnt /bin/bash <<EOF

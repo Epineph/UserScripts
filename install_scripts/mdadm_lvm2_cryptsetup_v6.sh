@@ -34,22 +34,7 @@ if [ "$(echo "$selected_disks" | wc -l)" -lt 2 ]; then
     exit 1
 fi
 
-# Stop any existing RAID arrays
-#mdadm --zero-superblock --force "$(for disk in $selected_disks; do echo "${disk}p2"; done)"
 
-# Wipe disks
-#for disk in $selected_disks; do
-#    wipefs --all --force "$disk"
-#done
-
-# Partition Disks
-#for disk in $selected_disks; do
-#    echo "Partitioning $disk..."
-#    parted "$disk" --script mklabel gpt
-#    parted "$disk" --script mkpart ESP fat32 1MiB 2049MiB
-#    parted "$disk" --script set 1 esp on
-#    parted "$disk" --script mkpart primary 2049MiB 100%
-#done
 
 # Ensure partitions are recognized
 partprobe
@@ -57,8 +42,7 @@ partprobe
 # Create RAID-0 Array
 echo "Setting up RAID-0 (striping) across selected disks"
 #partitions=$(for disk in $selected_disks; do echo "${disk}p2"; done)
-mdadm --create --verbose /dev/md0 --level=0 --raid-devices="$(echo "$selected_disks" | wc -l)" "$partitions"
-
+mdadm --create --verbose /dev/md0 --level=0 --raid-devices=2 "${DISK1}p3" "${DISK2}p2"
 # Wait for RAID array to initialize
 sleep 10
 
@@ -119,6 +103,11 @@ pacman -S --needed --noconfirm grub efibootmgr
 UUID=\$(blkid -s UUID -o value /dev/md0)
 sed -i 's|^GRUB_CMDLINE_LINUX=.*|GRUB_CMDLINE_LINUX="cryptdevice=UUID=\$UUID:cryptraid root=/dev/volgroup0/lv_root"|' /etc/default/grub
 echo 'GRUB_ENABLE_CRYPTODISK=y' >> /etc/default/grub
+
+sed -i 's|^GRUB_TERMINAL_INPUT=.*|GRUB_TERMINAL_INPUT="usb_keyboard"|' /etc/default/grub
+
+sed -i 's|^GRUB_PRELOAD_MODULES=.*|GRUB_PRELOAD_MODULES="usb usb_keyboard ohci uhci ehci"|' /etc/default/grub
+
 
 # Install GRUB to the EFI directory
 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
