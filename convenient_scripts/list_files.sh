@@ -48,6 +48,8 @@ else
     done < <(find "$directory" -type f -print0)
 fi
 
+
+
 # Print the array elements
 for file in "${files[@]}"; do
     echo "$file"
