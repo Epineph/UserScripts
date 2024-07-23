@@ -11,7 +11,7 @@ Arguments:
   key1, key2, ... keyN    Keys to be added and signed.
 
 Example:
-  $0 12345678 23456789 34567890
+  $0 72BF227DD76AE5BF 63CC496475267693 12345678
 EOF
 }
 
@@ -24,8 +24,7 @@ fi
 # Iterate over all provided keys
 for key in "$@"; do
   echo "Adding and signing key: $key"
-  sudo pacman-key -r "$key"
-  sudo pacman-key --lsign-key "$key"
+  sudo pacman-key -r "$key" && sudo pacman-key --lsign-key "$key"
 done
 
 echo "All keys processed."
