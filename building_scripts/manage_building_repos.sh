@@ -3,19 +3,17 @@
 # Display help message
 show_help() {
 cat << EOF
-Usage: build [options]
+Usage: manage_build_repos.sh [options]
 
 Options:
-  -D, --directory       Specify project directory (default: current directory).
+  -D, --directory       Specify project directory (default: \$HOME/repos).
   -a, --auto            Use default answers for all prompts.
-  -i, --install         Automatically install after building.
   -h, --help            Display this help and exit.
 
 Examples:
-  build
-  build -D /path/to/project
-  build -a
-  build -i
+  manage_build_repos.sh
+  manage_build_repos.sh -D /path/to/projects
+  manage_build_repos.sh -a
 EOF
 }
 
@@ -39,71 +37,15 @@ ask_yes_no() {
     fi
 }
 
-# Function to get the project path from user
-get_project_path() {
-    read -p "Enter the project path (leave blank to use current directory): " project_path
-    if [ -z "$project_path" ]; then
-        project_path=$(pwd)
-    fi
-    cd "$project_path" || exit 1
-    echo "Using project path: $project_path"
-}
-
-# Default values
-project_path=""
-auto_mode=false
-auto_install=false
-
-# Parse command-line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -D|--directory)
-            project_path="$2"
-            shift 2
-            ;;
-        -a|--auto)
-            auto_mode=true
-            shift
-            ;;
-        -i|--install)
-            auto_install=true
-            auto_mode=true  # Ensure auto_mode is enabled when install is specified
-            shift
-            ;;
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo "Error: Invalid option"
-            show_help
-            exit 1
-            ;;
-    esac
-done
-
-# Get project path
-if [ -z "$project_path" ]; then
-    ask_yes_no "Are you in the project directory you want to build?" "y" || get_project_path
-else
-    cd "$project_path" || exit 1
-fi
-
-# Ask to use or create build directory
-if [ -d "build" ]; then
-    ask_yes_no "Build directory already exists. Do you want to build from there?" "y"
-else
-    ask_yes_no "Do you want to create a build directory?" "y" && {
-        mkdir -p build
-        echo "Created build directory."
-    }
-fi
-
-# Build the project based on available files
+# Function to build the project based on available files
 build_project() {
+    local dir=$1
+    cd "$dir" || return
+
     if [ -f "CMakeLists.txt" ]; then
         ask_yes_no "Do you want to use cmake?" "y" && {
-            cd build || exit 1
+            mkdir -p build
+            cd build || return
             ask_yes_no "Do you want to use Ninja?" "n" && {
                 cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/bin -DCMAKE_TOOLCHAIN_FILE=/home/heini/repos/vcpkg/scripts/buildsystems/vcpkg.cmake ..
                 ninja -j$(nproc)
@@ -143,18 +85,21 @@ build_project() {
         perl Makefile.PL
         make
     else
-        echo "No recognizable build system found."
-        exit 1
+        echo "No recognizable build system found in $dir."
+        return 1
     fi
 }
 
-# Install the project based on available files to $HOME/bin
+# Function to install the project based on available files to $HOME/bin
 install_project() {
-    install_dir="$HOME/bin"
+    local dir=$1
+    cd "$dir" || return
+
+    local install_dir="$HOME/bin"
     mkdir -p "$install_dir"
 
     if [ -f "CMakeLists.txt" ]; then
-        cd build || exit 1
+        cd build || return
         make install
     elif [ -f "configure" ]; then
         make install
@@ -183,29 +128,65 @@ install_project() {
     elif [ -f "Makefile.PL" ]; then
         make install PREFIX="$install_dir"
     else
-        echo "No recognizable installation method found."
-        exit 1
+        echo "No recognizable installation method found in $dir."
+        return 1
     fi
 }
 
-# Build the project
-build_project
+# Function to select repositories using FZF
+select_repos() {
+    local repos=()
+    while true; do
+        repo=$(find "$project_path" -mindepth 1 -maxdepth 1 -type d | fzf --multi --prompt "Select repositories (press Enter to proceed, Ctrl+C to finish):")
+        [ -z "$repo" ] && break
+        repos+=("$repo")
+    done
+    echo "${repos[@]}"
+}
 
-# Ask to prepend build path to PATH variable in .zshrc unless auto_install is true
-if [ "$auto_install" != true ]; then
-    ask_yes_no "Do you want to prepend the build path to your PATH variable in .zshrc?" "n" && {
-        build_path=$(pwd)
-        sed -i "1iexport PATH=$build_path:\$PATH" ~/.zshrc
-        echo "Updated PATH in .zshrc"
-    }
-fi
+# Default values
+project_path="$HOME/repos"
+auto_mode=false
 
-# Install the build if --install flag is provided or prompt user
-if [ "$auto_install" = true ]; then
-    install_project
-else
-    ask_yes_no "Do you want to install the build?" "y" && install_project
-fi
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -D|--directory)
+            project_path="$2"
+            shift 2
+            ;;
+        -a|--auto)
+            auto_mode=true
+            shift
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Error: Invalid option"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+# Select repositories
+selected_repos=($(select_repos))
+
+# Iterate over each selected repository and build
+for repo in "${selected_repos[@]}"; do
+    echo "Building $repo..."
+    build_project "$repo"
+    ask_yes_no "Do you want to install the build in $repo?" "y" && install_project "$repo"
+done
+
+# Ask to prepend build path to PATH variable in .zshrc
+ask_yes_no "Do you want to prepend the build path to your PATH variable in .zshrc?" "n" && {
+    build_path=$(pwd)
+    sed -i "1iexport PATH=$build_path:\$PATH" ~/.zshrc
+    echo "Updated PATH in .zshrc"
+}
 
 echo "Build process completed."
 
