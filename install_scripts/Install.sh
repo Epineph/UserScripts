@@ -49,7 +49,7 @@ partprobe
 if [ "$(echo "$selected_disks" | wc -l)" -gt 1 ]; then
     # Create RAID-0 Array if more than one disk is selected
     echo "Setting up RAID-0 (striping) across selected disks"
-    partitions=$(for disk in $selected_disks; do echo "${disk}2"; done)
+    partitions=$(for disk in $selected_disks; do echo "${disk}p2"; done)
     mdadm --create --verbose /dev/md0 --level=0 --raid-devices=$(echo "$selected_disks" | wc -l) $partitions
     sleep 10  # Wait for RAID array to initialize
     pvcreate /dev/md0
@@ -57,8 +57,8 @@ if [ "$(echo "$selected_disks" | wc -l)" -gt 1 ]; then
 else
     # Single disk setup
     echo "Single disk setup detected"
-    pvcreate ${selected_disks}2
-    vgcreate volgroup0 ${selected_disks}2
+    pvcreate ${selected_disks}p2
+    vgcreate volgroup0 ${selected_disks}p2
 fi
 
 # Create Logical Volumes
@@ -84,13 +84,13 @@ mkswap /dev/mapper/cryptswap
 
 # Format the ESP partitions
 for disk in $selected_disks; do
-    mkfs.fat -F32 ${disk}1
+    mkfs.fat -F32 ${disk}p1
 done
 
 # Mount Partitions
 mount /dev/mapper/cryptroot /mnt
 mkdir -p /mnt/{boot/efi,home}
-mount $(echo $selected_disks | awk '{print $1"1"}') /mnt/boot/efi
+mount $(echo $selected_disks | awk '{print $1"p1"}') /mnt/boot/efi
 mount /dev/mapper/crypthome /mnt/home
 swapon /dev/mapper/cryptswap
 
@@ -149,7 +149,3 @@ systemctl enable NetworkManager
 EOF
 
 # Exit and reboot
-#umount -R /mnt
-#swapoff -a
-#reboot
-
