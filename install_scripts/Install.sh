@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e  # Exit immediately if a command exits with a non-zero status
+#set -e  # Exit immediately if a command exits with a non-zero status
 
 # Enable multilib repository and parallel downloads
 sudo sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
@@ -122,7 +122,7 @@ cat <<EOT > /etc/hosts
 EOT
 
 # Set the root password
-echo "root:password" | chpasswd
+#echo "root:password" | chpasswd
 
 # Install necessary packages
 pacman -S grub efibootmgr networkmanager
