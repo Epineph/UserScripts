@@ -13,19 +13,21 @@ timedatectl set-ntp true
 pacman -Syyy
 
 # Install required utilities
-pacman -S fzf mdadm lvm2 git --needed --noconfirm
+pacman -S fzf lvm2 git mdadm --needed --noconfirm
 
 # Disk Selection
 selected_disks=$(lsblk -d -o NAME,SIZE,MODEL | grep -E '^sd|^nvme' | fzf -m | awk '{print "/dev/"$1}')
 
-# Ensure two disks are selected for RAID
-if [ "$(echo "$selected_disks" | wc -l)" -lt 2 ]; then
-    echo "Select at least two disks for RAID configuration."
+# Ensure at least one disk is selected
+if [ -z "$selected_disks" ]; then
+    echo "Select at least one disk for installation."
     exit 1
 fi
 
-# Stop any existing RAID arrays
-mdadm --zero-superblock --force $(for disk in $selected_disks; do echo "${disk}p2"; done)
+# Stop any existing RAID arrays (if any)
+for disk in $selected_disks; do
+    mdadm --zero-superblock --force ${disk}* || true
+done
 
 # Wipe disks
 for disk in $selected_disks; do
@@ -36,131 +38,118 @@ done
 for disk in $selected_disks; do
     echo "Partitioning $disk..."
     parted $disk --script mklabel gpt
-    parted $disk --script mkpart ESP fat32 1MiB 2049MiB
+    parted $disk --script mkpart ESP fat32 1MiB 513MiB
     parted $disk --script set 1 esp on
-    parted $disk --script mkpart primary 2049MiB 100%
+    parted $disk --script mkpart primary 513MiB 100%
 done
 
 # Ensure partitions are recognized
 partprobe
 
-# Create RAID-0 Array
-echo "Setting up RAID-0 (striping) across selected disks"
-partitions=$(for disk in $selected_disks; do echo "${disk}p2"; done)
-mdadm --create --verbose /dev/md0 --level=0 --raid-devices=$(echo "$selected_disks" | wc -l) $partitions
-
-# Wait for RAID array to initialize
-sleep 10
-
-# Create Physical Volumes on RAID Array
-pvcreate /dev/md0
-
-# Create Volume Group
-vgcreate volgroup0 /dev/md0
+if [ "$(echo "$selected_disks" | wc -l)" -gt 1 ]; then
+    # Create RAID-0 Array if more than one disk is selected
+    echo "Setting up RAID-0 (striping) across selected disks"
+    partitions=$(for disk in $selected_disks; do echo "${disk}2"; done)
+    mdadm --create --verbose /dev/md0 --level=0 --raid-devices=$(echo "$selected_disks" | wc -l) $partitions
+    sleep 10  # Wait for RAID array to initialize
+    pvcreate /dev/md0
+    vgcreate volgroup0 /dev/md0
+else
+    # Single disk setup
+    echo "Single disk setup detected"
+    pvcreate ${selected_disks}2
+    vgcreate volgroup0 ${selected_disks}2
+fi
 
 # Create Logical Volumes
-yes | lvcreate -L 130GB volgroup0 -n lv_root
-yes | lvcreate -L 32GB volgroup0 -n lv_swap
-yes | lvcreate -l 100%FREE volgroup0 -n lv_home
+lvcreate -L 130GB volgroup0 -n lv_root
+lvcreate -L 32GB volgroup0 -n lv_swap
+lvcreate -l 100%FREE volgroup0 -n lv_home
 
-# Format Partitions
+# Encrypt the logical volumes
+echo -n "Enter passphrase for LUKS encryption: "
+read -s LUKS_PASSPHRASE
+echo
+echo -n "$LUKS_PASSPHRASE" | cryptsetup luksFormat /dev/volgroup0/lv_root -
+echo -n "$LUKS_PASSPHRASE" | cryptsetup open /dev/volgroup0/lv_root cryptroot -
+echo -n "$LUKS_PASSPHRASE" | cryptsetup luksFormat /dev/volgroup0/lv_swap -
+echo -n "$LUKS_PASSPHRASE" | cryptsetup open /dev/volgroup0/lv_swap cryptswap -
+echo -n "$LUKS_PASSPHRASE" | cryptsetup luksFormat /dev/volgroup0/lv_home -
+echo -n "$LUKS_PASSPHRASE" | cryptsetup open /dev/volgroup0/lv_home crypthome -
+
+# Format the logical volumes
+mkfs.ext4 /dev/mapper/cryptroot
+mkfs.ext4 /dev/mapper/crypthome
+mkswap /dev/mapper/cryptswap
+
+# Format the ESP partitions
 for disk in $selected_disks; do
-    mkfs.fat -F32 ${disk}p1
+    mkfs.fat -F32 ${disk}1
 done
-mkfs.ext4 /dev/volgroup0/lv_root
-mkfs.ext4 /dev/volgroup0/lv_home
-mkswap /dev/volgroup0/lv_swap
 
 # Mount Partitions
-mount /dev/volgroup0/lv_root /mnt
+mount /dev/mapper/cryptroot /mnt
+mkdir -p /mnt/{boot/efi,home}
+mount $(echo $selected_disks | awk '{print $1"1"}') /mnt/boot/efi
+mount /dev/mapper/crypthome /mnt/home
+swapon /dev/mapper/cryptswap
 
-mkdir -p /mnt/{boot/efi,home,proc,sys,dev,etc}
-mount $(echo $selected_disks | awk '{print $1"p1"}') /mnt/boot/efi
-mount /dev/volgroup0/lv_home /mnt/home
-swapon /dev/volgroup0/lv_swap
+# Install essential packages
+pacstrap /mnt base linux linux-firmware lvm2
 
-# Bind mount necessary filesystems
-mount --bind /proc /mnt/proc
-mount --bind /sys /mnt/sys
-mount --bind /dev /mnt/dev
-
-# Configure mdadm
-mdadm --detail --scan | tee -a /mnt/etc/mdadm.conf
-
-# Configure mkinitcpio
-sed -i -e 's/^HOOKS=.*$/HOOKS=(base systemd udev autodetect modconf block mdadm_udev lvm2 filesystems keyboard fsck)/' /etc/mkinitcpio.conf
-cp /etc/mkinitcpio.conf /mnt/etc/mkinitcpio.conf
-cp /etc/pacman.conf /mnt/etc/pacman.conf
-
-pacstrap -P -K /mnt base base-devel lvm2 mdadm linux linux-headers nvidia nvidia-settings nvidia-utils linux-firmware intel-ucode efibootmgr networkmanager xdg-user-dirs xdg-utils sudo nano vim mtools dosfstools java-runtime python-setuptools ntfs-3g archinstall archiso arch-install-scripts
-
-sleep 2
-
+# Generate the fstab file
 genfstab -U /mnt >> /mnt/etc/fstab
 
-# Chroot into the new system and complete configuration
-arch-chroot /mnt /bin/bash <<EOF
+# Chroot into the new system
+arch-chroot /mnt <<EOF
 
-# Set up localization and timezone
-echo "en_DK.UTF-8 UTF-8" >> /etc/locale.gen
-locale-gen
-echo "LANG=en_DK.UTF-8" > /etc/locale.conf
-echo "KEYMAP=dk" > /etc/vconsole.conf
+# Set timezone
 ln -sf /usr/share/zoneinfo/Europe/Copenhagen /etc/localtime
 hwclock --systohc
 
-# Set hostname and hosts
-echo "archlinux-desktop" > /etc/hostname
-echo "127.0.0.1 localhost" >> /etc/hosts
-echo "127.0.1.1 archlinux-desktop.localdomain archlinux-desktop" >> /etc/hosts
+# Localization
+echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+locale-gen
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
+echo "KEYMAP=us" > /etc/vconsole.conf
 
-# Set root password
-echo "root:132" | chpasswd
+# Configure the network
+echo "archlinux" > /etc/hostname
+cat <<EOT > /etc/hosts
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   archlinux.localdomain archlinux
+EOT
 
-# Create user heini
-useradd -m -G wheel -s /bin/bash heini
-echo "heini:132" | chpasswd
+# Set the root password
+echo "root:password" | chpasswd
 
-# Configure sudoers
-sed -i 's/^# \(%wheel ALL=(ALL:ALL) ALL\)/\1/' /etc/sudoers
-echo "heini ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
+# Install necessary packages
+pacman -S grub efibootmgr networkmanager
 
-# Change user to heini and set up repositories
-su - heini <<EOF2
-cd \$HOME
-mkdir repos
-cd repos
-git clone https://github.com/Epineph/UserScripts
-git clone https://github.com/Epineph/generate_install_scripts
-git clone https://github.com/JaKooLit/Arch-Hyprland
-git clone https://aur.archlinux.org/yay.git
-git clone https://aur.archlinux.org/paru.git
+# Configure mkinitcpio
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block encrypt lvm2 filesystems keyboard fsck)/' /etc/mkinitcpio.conf
+mkinitcpio -P
 
-# Copy script and update .bashrc
-sudo cp /home/heini/repos/UserScripts/log_scripts/gen_log.sh /usr/local/bin/gen_log
-echo 'export PATH=/usr/local/bin:\$PATH' >> /home/heini/.bashrc
+# Install GRUB
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
 
-# Set permissions
-sudo chown -R heini:heini /home/heini/repos
-sudo chmod -R u+rwx /home/heini/repos
-sudo chown -R heini:heini /usr/local/bin
-sudo chmod -R u+rwx /usr/local/bin
-
-# Source .bashrc
-source /home/heini/.bashrc
-
-# Build and install yay and paru
-cd /home/heini/repos/yay
-makepkg -si --noconfirm
-
-cd /home/heini/repos/paru
-makepkg -si --noconfirm
-EOF2
-
-# Install and configure GRUB
-grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=arch_grub --recheck
+# Configure GRUB
+sed -i 's/^GRUB_CMDLINE_LINUX=.*/GRUB_CMDLINE_LINUX="cryptdevice=\/dev\/volgroup0\/lv_root:cryptroot root=\/dev\/mapper\/cryptroot"/' /etc/default/grub
 grub-mkconfig -o /boot/grub/grub.cfg
+
+# Add crypttab entries
+echo "cryptroot /dev/volgroup0/lv_root none luks" > /etc/crypttab
+echo "cryptswap /dev/volgroup0/lv_swap none luks" >> /etc/crypttab
+echo "crypthome /dev/volgroup0/lv_home none luks" >> /etc/crypttab
+
+# Enable services
+systemctl enable NetworkManager
 
 EOF
 
-echo "Installation and configuration complete. Please reboot into your 
+# Exit and reboot
+#umount -R /mnt
+#swapoff -a
+#reboot
+
