@@ -1,5 +1,5 @@
 # UserScripts
-
+```bash
 #!/bin/bash
 
 # Update system clock
@@ -149,15 +149,15 @@ echo '/swapfile none swap defaults 0 0' >> /etc/fstab
 swapon /swapfile
 
 # Exit chroot
-exit
+#exit
 
 # Unmount partitions
-umount -R /mnt
+#umount -R /mnt
 
 # Reboot the system
-reboot
-
-Explanation:
+#reboot
+```
+# Explanation:
 
 	1.	Bootloader Configuration: The script now includes both systemd-boot and GRUB configurations, with systemd-boot lines commented out.
 	2.	GRUB Configuration: The necessary changes to /etc/default/grub are included, such as setting GRUB_CMDLINE_LINUX for encrypted root and enabling GRUB_ENABLE_CRYPTODISK.
