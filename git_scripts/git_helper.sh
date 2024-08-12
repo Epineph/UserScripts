@@ -8,10 +8,11 @@ Usage: git_helper [OPTIONS]
 Options:
   -e, --edited     List and view files currently being edited (staged or modified).
   -t, --tracked    List all currently tracked files in the repository.
+  -d, --diff       Show differences between edited and tracked files.
   -h, --help       Display this help message and exit.
 
 Description:
-  This script enhances your Git workflow by using tools like fd, bat, and fzf to make it easier to track and view files in your repository.
+  This script enhances your Git workflow by using tools like fd, bat, and fzf to make it easier to track, view, and compare files in your repository.
 
 Examples:
   List and view edited files:
@@ -19,6 +20,9 @@ Examples:
 
   List all tracked files:
     git_helper -t
+
+  Show differences in edited and tracked files:
+    git_helper -d
 
 EOF
 }
@@ -57,16 +61,44 @@ list_tracked_files() {
   fi
 }
 
+# Function to show differences between edited and tracked files
+show_diff_files() {
+  echo "Searching for edited files..."
+  edited_files=$(git status --porcelain | grep -E '^(M|A|R)' | awk '{print $2}')
+  
+  if [ -z "$edited_files" ]; then
+    echo "No edited files found."
+    exit 0
+  fi
+
+  selected_file=$(echo "$edited_files" | fzf --multi --preview="git diff --color=always {} | bat --paging=never --language=diff --style=numbers" --height=40% --border --header="Select files to view diff")
+
+  if [ -n "$selected_file" ]; then
+    echo "Diff for $selected_file:"
+    git diff --color=always "$selected_file" | bat --paging=never --language=diff --style=numbers
+  else
+    echo "No files selected."
+  fi
+}
+
 # Parse arguments
-if [ "$1" == "-e" ] || [ "$1" == "--edited" ]; then
-  list_edited_files
-elif [ "$1" == "-t" ] || [ "$1" == "--tracked" ]; then
-  list_tracked_files
-elif [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
-  show_help
-else
-  echo "Invalid option: $1"
-  show_help
-  exit 1
-fi
+case "$1" in
+  -e|--edited)
+    list_edited_files
+    ;;
+  -t|--tracked)
+    list_tracked_files
+    ;;
+  -d|--diff)
+    show_diff_files
+    ;;
+  -h|--help)
+    show_help
+    ;;
+  *)
+    echo "Invalid option: $1"
+    show_help
+    exit 1
+    ;;
+esac
 
