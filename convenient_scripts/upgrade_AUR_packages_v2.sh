@@ -3,7 +3,7 @@
 # Function to get the list of packages that need to be rebuilt
 get_packages_to_rebuild() {
     # Get the list of packages that appear in the upgrade list
-    yay -Syyu --devel --noconfirm --needed | grep 'AUR' | awk '{print $3}' | sort -u
+    yay -Syyu --devel --noconfirm --needed | grep -E '^ ->' | awk '{print $2}' | sort -u
 }
 
 # Function to force rebuild AUR packages
