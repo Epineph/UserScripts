@@ -16,7 +16,7 @@ fi
 
 # Function to download the latest Arch ISO
 download_latest_iso() {
-    ISO_URL="https://mirrors.dotsrc.org/archlinux/iso/2024.05.01/archlinux-2024.05.01-x86_64.iso"
+    ISO_URL="https://mirrors.dotsrc.org/archlinux/iso/2024.08.01/archlinux-2024.08.01-x86_64.iso"
     ISO_FILE="/tmp/archlinux.iso"
     
     echo "Downloading the latest Arch Linux ISO from $ISO_URL..."
