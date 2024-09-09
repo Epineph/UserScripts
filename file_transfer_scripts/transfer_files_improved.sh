@@ -2,8 +2,8 @@
 
 # Define variables
 REMOTE_USER="root"
-REMOTE_HOST="192.168.1.78"
-REMOTE_PATH="/mnt/home/heini/"
+REMOTE_HOST="192.168.1.72"
+REMOTE_PATH="/usr/local/bin"
 
 # Function to transfer files
 transfer_files() {
