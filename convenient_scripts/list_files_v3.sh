@@ -55,8 +55,8 @@ if [[ ! -d "$directory" ]]; then
     exit 1
 fi
 
-if [[ "$file_type" != "" && "$file_type" != "sh" && "$file_type" != "py" ]]; then
-    echo "Error: Unsupported file type '$file_type'. Supported types are 'sh' and 'py'."
+if [[ "$file_type" != "" && "$file_type" != "sh" && "$file_type" != "py" && "$file_type" != "ps1" ]]; then
+    echo "Error: Unsupported file type '$file_type'. Supported types are 'sh', 'ps1' and 'py'."
     exit 1
 fi
 
@@ -85,7 +85,7 @@ for file in $files; do
             echo "${file#"$directory"/}"
             ;;
         reveal)
-            (cd "$directory" && sudo "$(which bat)" --style=grid --paging=never "${file#"$directory"/}")
+            (cd "$directory" && sudo "$(which bat)" --style=grid --paging=never --color=always --theme=Dracula "${file#"$directory"/}")
     esac
 done
 
