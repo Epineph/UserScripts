@@ -31,14 +31,22 @@ update_grub_config() {
     echo "Updated GRUB_CMDLINE_LINUX with encrypted device options."
 }
 
+# Check if the user is root
+if [[ $EUID -ne 0 ]]; then
+    echo "You are not running as root. Attempting to use sudo..."
+    SUDO_CMD="sudo"
+else
+    SUDO_CMD=""
+fi
+
 # Run the update function
 update_grub_config
 
-# Regenerate the GRUB configuration
+# Regenerate the GRUB configuration with sudo if needed
 echo "Regenerating GRUB configuration..."
-grub-mkconfig -o /boot/grub/grub.cfg
+$SUDO_CMD grub-mkconfig -o /boot/grub/grub.cfg
 
 # Optionally, install GRUB if needed (useful if the bootloader isn't installed yet)
-# grub-install /dev/sdX  # Replace /dev/sdX with your actual device (e.g., /dev/sda)
+# $SUDO_CMD grub-install /dev/sdX  # Replace /dev/sdX with your actual device (e.g., /dev/sda)
 
 echo "GRUB configuration updated and grub.cfg regenerated."
