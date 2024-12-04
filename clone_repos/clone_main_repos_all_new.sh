@@ -16,6 +16,7 @@ done
 
 # List of repositories to check and clone if not present
 repos=(
+    "direnv https://github.com/direnv/direnv.git"
     "yacas https://github.com/grzegorzmazur/yacas.git"
     "chainer-chemistry https://github.com/chainer/chainer-chemistry.git"
     "rdkit https://github.com/rdkit/rdkit.git"
