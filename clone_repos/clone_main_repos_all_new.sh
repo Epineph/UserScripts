@@ -16,6 +16,9 @@ done
 
 # List of repositories to check and clone if not present
 repos=(
+    "ScaffoldGraph https://github.com/UCLCheminformatics/ScaffoldGraph.git"
+    "networkx https://github.com/networkx/networkx.git"
+    "coordgenlibs https://github.com/schrodinger/coordgenlibs.git"
     "direnv https://github.com/direnv/direnv.git"
     "yacas https://github.com/grzegorzmazur/yacas.git"
     "chainer-chemistry https://github.com/chainer/chainer-chemistry.git"
