@@ -16,6 +16,12 @@ done
 
 # List of repositories to check and clone if not present
 repos=(
+    "yacas https://github.com/grzegorzmazur/yacas.git"
+    "chainer-chemistry https://github.com/chainer/chainer-chemistry.git"
+    "rdkit https://github.com/rdkit/rdkit.git"
+    "azure-sdk-for-python https://github.com/Azure/azure-sdk-for-python.git"
+    "openbabel https://github.com/openbabel/openbabel.git"
+    "azure-cli https://github.com/Azure/azure-cli.git"
     "swig https://github.com/swig/swig.git"
     "CMake https://github.com/Kitware/CMake.git"
     "ninja https://github.com/ninja-build/ninja.git"
