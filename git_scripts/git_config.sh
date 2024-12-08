@@ -5,7 +5,7 @@ SCRIPT_NAME="$(basename "$0")"
 show_help() {
     local helper="cat"
     if command -v bat &>/dev/null; then
-        helper="bat --paging=never --language=plaintext"
+        helper="bat --paging=never --language=bash --color=always --style=grid --theme=Dracula"
     fi
 
     $helper << EOF
