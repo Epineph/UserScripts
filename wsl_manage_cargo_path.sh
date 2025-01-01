@@ -1,5 +1,5 @@
 ###
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Help Section
 cat << EOF
@@ -79,4 +79,14 @@ if $ADD_TO_PATH; then
     echo "Added $SELECTED_BIN to PATH."
 else
     echo "Selected binary path: $SELECTED_BIN"
+fi
+
+# Modify /etc/fstab to include swap file if not already present
+SWAP_FILE_PATH="/swapfile"
+if ! grep -q "$SWAP_FILE_PATH" /etc/fstab; then
+    echo "Adding swap file entry to /etc/fstab..."
+    echo "$SWAP_FILE_PATH none swap sw 0 0" | sudo tee -a /etc/fstab > /dev/null
+    echo "Swap file entry added successfully."
+else
+    echo "Swap file entry already exists in /etc/fstab."
 fi
