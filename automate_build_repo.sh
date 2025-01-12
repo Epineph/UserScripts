@@ -22,30 +22,29 @@ build_project() {
     local dir="$1"
     echo "Building in directory: $dir"
     mkdir -p "$dir/build"
-    cd "$dir" || exit 1
+    cd "$dir/build" || exit 1
 
     ionice -c3 nice -n 19 bash -c "
-    if [ -f \"CMakeLists.txt\" ]; then
-        cd build || exit 1
-        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=\"$dir/bin\" ..
+    if [ -f ../CMakeLists.txt ]; then
+        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=\"$HOME/bin\" ..
         cmake --build . --config Release -j$(nproc)
-    elif [ -f \"configure\" ]; then
-        ./configure --prefix=\"$dir/bin\"
+    elif [ -f ../configure ]; then
+        ../configure --prefix=\"$HOME/bin\"
         make -j$(nproc)
-    elif [ -f \"Makefile\" ]; then
-        make -j$(nproc)
-    elif [ -f \"Cargo.toml\" ]; then
-        cargo build --release
-    elif [ -f \"setup.py\" ]; then
-        python setup.py build
-    elif [ -f \"pyproject.toml\" ]; then
-        python -m pip install -e . --prefix \"$dir/bin\"
-    elif [ -f \"package.json\" ]; then
-        npm install && npm run build
-    elif [ -f \"go.mod\" ]; then
-        go build ./...
-    elif [ -f \"Makefile.PL\" ]; then
-        perl Makefile.PL
+    elif [ -f ../Makefile ]; then
+        make -C .. -j$(nproc)
+    elif [ -f ../Cargo.toml ]; then
+        cargo build --manifest-path ../Cargo.toml --release
+    elif [ -f ../setup.py ]; then
+        python ../setup.py build
+    elif [ -f ../pyproject.toml ]; then
+        python -m pip install -e .. --prefix \"$HOME/bin\"
+    elif [ -f ../package.json ]; then
+        npm install --prefix .. && npm run build --prefix ..
+    elif [ -f ../go.mod ]; then
+        go build -o build ../...
+    elif [ -f ../Makefile.PL ]; then
+        perl ../Makefile.PL
         make
     else
         echo \"No recognizable build system found in $dir. Skipping.\"
@@ -59,28 +58,26 @@ build_project() {
 install_project() {
     local dir="$1"
     echo "Installing from directory: $dir"
-    local install_dir="$dir/bin"
-    mkdir -p "$install_dir"
+    cd "$dir/build" || exit 1
 
-    if [ -f "$dir/CMakeLists.txt" ]; then
-        cd "$dir/build" || exit 1
+    if [ -f ../CMakeLists.txt ]; then
         make install
-    elif [ -f "$dir/configure" ]; then
+    elif [ -f ../configure ]; then
         make install
-    elif [ -f "$dir/Makefile" ]; then
-        make install
-    elif [ -f "$dir/Cargo.toml" ]; then
-        cargo install --path "$dir" --root "$install_dir"
-    elif [ -f "$dir/setup.py" ]; then
-        python setup.py install --prefix="$install_dir"
-    elif [ -f "$dir/pyproject.toml" ]; then
-        python -m pip install --prefix="$install_dir" -e "$dir"
-    elif [ -f "$dir/package.json" ]; then
-        npm install -g "$dir" --prefix "$install_dir"
-    elif [ -f "$dir/go.mod" ]; then
-        go install ./... --prefix "$install_dir"
-    elif [ -f "$dir/Makefile.PL" ]; then
-        make install PREFIX="$install_dir"
+    elif [ -f ../Makefile ]; then
+        make -C .. install
+    elif [ -f ../Cargo.toml ]; then
+        cargo install --path .. --root "$HOME/bin"
+    elif [ -f ../setup.py ]; then
+        python ../setup.py install --prefix="$HOME/bin"
+    elif [ -f ../pyproject.toml ]; then
+        python -m pip install --prefix="$HOME/bin" -e ..
+    elif [ -f ../package.json ]; then
+        npm install -g .. --prefix "$HOME/bin"
+    elif [ -f ../go.mod ]; then
+        go install ../...
+    elif [ -f ../Makefile.PL ]; then
+        make install PREFIX="$HOME/bin"
     else
         echo "No recognizable installation method found in $dir. Skipping."
         return 1
