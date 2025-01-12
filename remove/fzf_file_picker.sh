@@ -6,18 +6,18 @@
 # Default Configuration
 ###############################################################################
 EDITOR="vim"              # Default editor
-PAGING="never"            # bat --paging
-STYLE="grid,header"       # bat --style
-THEME="Dracula"           # bat --theme
-COLOR="always"            # bat --color
-WRAP="wrap"               # fzf preview window
-LANGUAGE=""               # Optional bat --language (auto-detect if empty)
-MAX_DEPTH=""              # Default max depth for recursive searches (unlimited)
+BAT_DEFAULTS=(            # Default bat arguments
+  "--paging=never"
+  "--theme=Dracula"
+  "--color=always"
+  "--style=grid,header"
+)
+FZF_PREVIEW_WINDOW="right:60%:wrap"  # Default fzf preview window configuration
+RECURSIVE="true"          # Recursive search by default
+MAX_DEPTH=3               # Default max depth for recursive searches
 EXTENSIONS=""             # Default: no filtering
-OUTPUT_ONLY=false          # Output file content with bat (mutually exclusive with edit)
-
-# Will hold the target paths
-TARGETS=()
+BAT_EXTRA_ARGS=()         # Array for additional bat arguments
+TARGETS=()                # Will hold the target paths
 
 ###############################################################################
 # Helper Functions
@@ -26,34 +26,26 @@ TARGETS=()
 # Display usage instructions
 usage() {
   bat --style="grid,header" --paging="never" --color="always" --language="LESS" --theme="Dracula" <<EOF
-Usage: $(basename "$0") [OPTIONS] -t <TARGETS...>
+Usage: $(basename "$0") [OPTIONS] -t <TARGETS...> -- [BAT OPTIONS]
 
 A script combining fzf, fd, and bat to preview and select files for editing.
 
 Options:
   -t, --target <TARGETS...>          Target file(s) or folder(s) (comma- or space-separated).
   -e, --editor <EDITOR>              Specify editor (default: vim).
-  -r, --recursive [N]                Enable recursive search with optional max depth N (default: unlimited).
+  -r, --recursive                    Enable recursive search in folders (default: true).
   -x, --extensions <EXTS...>         Comma- or space-separated list of extensions to include.
                                      e.g., -x "py,sh,md".
-  -o, --output                       Output file content with bat instead of editing.
-  -p, --paging [never|auto|always]   Set bat paging mode (default: $PAGING).
-  --theme <THEME>                    Set bat theme (default: $THEME).
-  -l, --language <LANG>              Force bat language for syntax highlighting.
-  -h, --help                         Show this help message and exit.
+  -p, --paging [never|auto|always]   Set bat paging mode (default: never).
+  --theme <THEME>                    Set bat theme (default: Dracula).
+  --                                All arguments after this are passed directly to bat.
 
 Examples:
-  # Target a single file
-  $(basename "$0") -t ~/myfile.sh -e nano
+  # Target a single file and pass additional bat options
+  $(basename "$0") -t ~/myfile.sh -e nano -- --highlight-line :40 --chop-long-lines
 
-  # Target a folder with recursive search and filtering
-  $(basename "$0") -t ~/projects -x "py,sh" -e nvim
-
-  # Recursive search with depth
-  $(basename "$0") -t ~/projects -r 2
-
-  # Output file content with bat
-  $(basename "$0") -t ~/myfile.sh -o
+  # Target a folder with recursive search and filtering, squeeze blank lines
+  $(basename "$0") -t ~/projects -x "py,sh" -e nvim -- --squeeze-blank --diff-context 3
 EOF
 }
 
@@ -117,33 +109,27 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -r|--recursive)
-      if [[ "$2" =~ ^[0-9]+$ ]]; then
-        MAX_DEPTH="$2"
-        shift 2
-      else
-        MAX_DEPTH=""
-        shift
-      fi
+      RECURSIVE="true"
+      shift
       ;;
     -x|--extensions)
       EXTENSIONS=$(echo "$2" | sed 's/,/ /g')
       shift 2
       ;;
-    -o|--output)
-      OUTPUT_ONLY=true
-      shift
-      ;;
     -p|--paging)
-      PAGING="$2"
+      BAT_DEFAULTS[0]="--paging=$2"
       shift 2
       ;;
     --theme)
-      THEME="$2"
+      BAT_DEFAULTS[1]="--theme=$2"
       shift 2
       ;;
-    -l|--language)
-      LANGUAGE="$2"
-      shift 2
+    --)
+      shift
+      while [[ $# -gt 0 ]]; do
+        BAT_EXTRA_ARGS+=("$1")
+        shift
+      done
       ;;
     -h|--help)
       usage
@@ -178,10 +164,9 @@ fi
 ###############################################################################
 # Bat and Fzf Configuration
 ###############################################################################
-BAT_CMD=("bat" "--paging=$PAGING" "--theme=$THEME" "--color=$COLOR" "--style=$STYLE")
-[[ -n "$LANGUAGE" ]] && BAT_CMD+=( "--language=$LANGUAGE" )
+BAT_CMD=("bat" "${BAT_DEFAULTS[@]}" "${BAT_EXTRA_ARGS[@]}")
 
-FZF_PREVIEW_CMD="bat ${BAT_CMD[*]} -- {}"
+FZF_PREVIEW_CMD="bat ${BAT_CMD[*]} -- \"{}\""
 
 ###############################################################################
 # Process Targets
@@ -189,46 +174,30 @@ FZF_PREVIEW_CMD="bat ${BAT_CMD[*]} -- {}"
 
 for TGT in "${TARGETS[@]}"; do
   if [[ -f "$TGT" ]]; then
-    # If the target is a file, either preview or open it
+    # If the target is a file, directly preview and open it
     echo "Target is a file: $TGT"
     if file --mime-encoding "$TGT" | grep -q "binary"; then
       echo "Skipping binary file: $TGT" >&2
     else
-      if [[ "$OUTPUT_ONLY" == true ]]; then
-        bat --style="$STYLE" --color="$COLOR" --theme="$THEME" "$TGT"
-      else
-        echo "$TGT" | fzf --preview="$FZF_PREVIEW_CMD" --preview-window=right:60%:$WRAP
-        $EDITOR "$TGT"
-      fi
+      echo "$TGT" | fzf --preview="$FZF_PREVIEW_CMD" --preview-window="$FZF_PREVIEW_WINDOW"
+      $EDITOR "$TGT"
     fi
   elif [[ -d "$TGT" ]]; then
     # If the target is a folder, search recursively and preview
     echo "Target is a folder: $TGT"
     if check_fd_installed; then
       FD_CMD=("fd" "--type" "f" "--search-path" "$TGT")
-      [[ -n "$MAX_DEPTH" ]] && FD_CMD+=("--max-depth" "$MAX_DEPTH")
-      [[ -n "$EXTENSIONS" ]] && for ext in $EXTENSIONS; do FD_CMD+=("-e" "$ext"); done
-
-      FILE=$( "${FD_CMD[@]}" | fzf --preview="$FZF_PREVIEW_CMD" --preview-window=right:60%:$WRAP )
-      if [[ -n "$FILE" ]]; then
-        if [[ "$OUTPUT_ONLY" == true ]]; then
-          bat --style="$STYLE" --color="$COLOR" --theme="$THEME" --paging=never "$FILE"
-        else
-          $EDITOR "$FILE"
-        fi
+      if [[ "$RECURSIVE" == "true" ]]; then
+        FD_CMD+=( "--max-depth" "$MAX_DEPTH" )
       fi
+      [[ -n "$EXTENSIONS" ]] && for ext in $EXTENSIONS; do FD_CMD+=( "-e" "$ext" ); done
+
+      FILE=$( "${FD_CMD[@]}" | fzf --preview="$FZF_PREVIEW_CMD" --preview-window="$FZF_PREVIEW_WINDOW" )
+      [[ -n "$FILE" ]] && $EDITOR "$FILE"
     else
       # Fallback to find
-      FIND_CMD=("find" "$TGT" -type f)
-      [[ -n "$MAX_DEPTH" ]] && FIND_CMD+=("-maxdepth" "$MAX_DEPTH")
-      FILE=$( "${FIND_CMD[@]}" | fzf --preview="$FZF_PREVIEW_CMD" --preview-window=right:60%:$WRAP )
-      if [[ -n "$FILE" ]]; then
-        if [[ "$OUTPUT_ONLY" == true ]]; then
-          bat --style="$STYLE" --color="$COLOR" --theme="$THEME" "$FILE"
-        else
-          $EDITOR "$FILE"
-        fi
-      fi
+      FILE=$(find "$TGT" -type f | fzf --preview="$FZF_PREVIEW_CMD" --preview-window="$FZF_PREVIEW_WINDOW")
+      [[ -n "$FILE" ]] && $EDITOR "$FILE"
     fi
   else
     echo "Warning: '$TGT' is not a valid file or directory." >&2
