@@ -37,7 +37,11 @@ LLVM_BUILD_DIR="$HOME/llvm-build"        # Where to place build files
 LLVM_INSTALL_DIR="/usr/local"            # Installation prefix
 SWAPFILE="/swapfile"                     # Temporary swap file location
 SWAP_SIZE_GB=4                           # Size of the temporary swap file in GB
+<<<<<<< HEAD
 TARGET_PROJECTS="clang"                  # Comma-separated list of LLVM projects to build
+=======
+TARGET_PROJECTS="clang;lld;libcxx;libcxxabi;compiler-rt;mlir;polly;openmp;bolt"                  # Comma-separated list of LLVM projects to build
+>>>>>>> refs/remotes/origin/main
 ####################################
 
 ###############################################################################

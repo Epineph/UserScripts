@@ -1,7 +1,17 @@
 #!/bin/bash
 
+# Ensure fzf is installed
+if ! command -v fzf &> /dev/null; then
+    echo "fzf could not be found. Please install fzf to use this script."
+    exit 1
+fi
 
-
+# Function to display usage information
+usage() {
+    echo "Usage: $0"
+    echo "This script allows you to dynamically resize LVM logical volumes."
+    exit 1
+}
 
 # Function to display current LV usage
 display_lv_usage() {
@@ -23,22 +33,8 @@ select_lv() {
 # Check if the script is run as root
 if [ "$EUID" -ne 0 ]; then
     echo "Please run as root"
-    check_sudo_perms
-    exit 0
+    exit 1
 fi
-
-
-if [ "$(whoami)" != "root" ]; then
-    echo Script is running without sudo privileges.\
-         Script will be running as root to perform necesssary\
-          operations.
-    sudo su -s "$0"
-    exit
-fi
-
-yes | sudo pacman -S --neeeded fzf lsof strace
-
-
 
 # Display current usage
 display_lv_usage
