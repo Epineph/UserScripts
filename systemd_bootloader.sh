@@ -13,7 +13,7 @@ arch-chroot /mnt
 
 sudo bootctl --path=/efi install
 
-echo -e "default   arch-git.conf\ntimeout   5\nconsole-mode max\neditor    no" | sudo tee /efi/loader/loader.conf
+echo -e "default   arch-git.conf\ntimeout   5\nconsole-mode max\neditor    no" | sudo tee /efi/loader/entries/arch-git.conf
 default   arch-git.conf
 timeout   5
 console-mode max
