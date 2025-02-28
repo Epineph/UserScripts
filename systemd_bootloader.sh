@@ -13,13 +13,13 @@ arch-chroot /mnt
 
 sudo bootctl --path=/efi install
 
-echo -e "default   arch-git.conf\ntimeout   5\nconsole-mode max\neditor    no" | sudo tee /efi/loader/entries/arch-git.conf
+echo -e "default   arch-git.conf\ntimeout   5\nconsole-mode max\neditor    no" | sudo tee /efi/loader/loader.conf
 default   arch-git.conf
 timeout   5
 console-mode max
 editor    no
 
-echo -e title   "Arch Linux (amd-git)\nlinux   /vmlinuz-linux-amd-git\ninitrd  /amd-ucode.img\ninitrd  /initramfs-linux-amd-git.img\noptions root=/dev/mapper/vglinux-root rw loglevel=3 quiet" | sudo tee /efi/loader/entries/arch.conf
+echo -e title   "Arch Linux (amd-git)\nlinux   /vmlinuz-linux-amd-git\ninitrd  /amd-ucode.img\ninitrd  /initramfs-linux-amd-git.img\noptions root=/dev/mapper/vglinux-root rw loglevel=3 quiet" | sudo tee /efi/loader/entries/arch-git.conf
 
 title   Arch Linux (amd-git)
 linux   /vmlinuz-linux-amd-git
