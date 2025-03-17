@@ -1,0 +1,13 @@
+sudo reflector --verbose \
+  --country "Denmark,Sweden,Norway,Finland,Germany,Netherlands,Ukraine,Russia,Austria,Spain" \
+  --age 12 \
+  --latest 800 \
+  --fastest 800 \
+  --cache-timeout 1200 \
+  --download-timeout 5 \
+  --connection-timeout 5 \
+  --sort rate \
+  --threads 7 \
+  --protocol https \
+  --score 400 \
+  --save /etc/pacman.d/mirrorlist
