@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+#
+# ssh_agent_timer.sh
+#
+# This script starts an SSH agent (if one isn’t already running) and
+# adds an SSH key with a specified timeout. The key will be automatically
+# removed from the agent after the given duration.
+#
+# IMPORTANT: To propagate the SSH agent’s environment variables to your
+# current shell, use one of the following methods:
+#
+#   • Source the script directly:
+#       source ssh_agent_timer.sh -t 1h -k ~/.ssh/id_rsa
+#
+#   • Or use command substitution with eval:
+#       eval "$(ssh_agent_timer.sh -t 1h -k ~/.ssh/id_rsa)"
+#
+# USAGE:
+#   ssh_agent_timer.sh -t <timeout> [-k <key_file>] [--help]
+#
+# OPTIONS:
+#   -t, --timeout <duration>  Set the lifetime of the key in the agent.
+#                             The duration may be specified as seconds
+#                             (e.g., "3600") or using suffixes (e.g., "1h", "30m").
+#
+#   -k, --key <key_file>      Specify which SSH key to add.
+#                             Defaults to "$HOME/.ssh/id_rsa" if not provided.
+#
+#   -h, --help                Display this help message.
+#
+# EXAMPLES:
+#   # Start a new agent (if needed) and add id_rsa for 1 hour:
+#   eval "$(ssh_agent_timer.sh -t 1h)"
+#
+#   # Specify a different key and a 30-minute timeout:
+#   eval "$(ssh_agent_timer.sh -t 30m -k $HOME/.ssh/my_key)"
+#
+
+# ----------------------------------------------------------------------------
+# Function: usage
+# ----------------------------------------------------------------------------
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") -t <timeout> [-k <key_file>] [--help]
+
+This script starts an SSH agent (if necessary) and adds an SSH key with a time-limited 
+lifetime. The key will be removed from the agent after the specified timeout.
+
+Options:
+  -t, --timeout <duration>
+        Set the lifetime of the key (e.g., "3600", "30m", "1h").
+  -k, --key <key_file>
+        Specify the SSH key file to add (default: \$HOME/.ssh/id_rsa).
+  -h, --help
+        Display this help message.
+
+NOTE:
+  To get the SSH agent's environment variables in your current shell,
+  run:
+      eval "\$( $(basename "$0") -t <timeout> [-k <key_file>] )"
+EOF
+}
+
+# ----------------------------------------------------------------------------
+# Helper Function: error_exit
+# Prints an error message and exits.
+# ----------------------------------------------------------------------------
+error_exit() {
+  echo "Error: $1" >&2
+  usage
+  exit 1
+}
+
+# ----------------------------------------------------------------------------
+# Parse Command-Line Arguments
+# ----------------------------------------------------------------------------
+TIMEOUT=""
+KEY=""
+
+# Use getopts to process the options.
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -t|--timeout)
+      if [[ -n "$2" ]]; then
+        TIMEOUT="$2"
+        shift 2
+      else
+        error_exit "Option '$1' requires a timeout argument."
+      fi
+      ;;
+    -k|--key)
+      if [[ -n "$2" ]]; then
+        KEY="$2"
+        shift 2
+      else
+        error_exit "Option '$1' requires a key file argument."
+      fi
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      error_exit "Unknown option: $1"
+      ;;
+    *)
+      # Break if a positional argument is encountered.
+      break
+      ;;
+  esac
+done
+
+# ----------------------------------------------------------------------------
+# Set defaults and validate inputs
+# ----------------------------------------------------------------------------
+# Default key to "$HOME/.ssh/id_rsa" if not provided.
+if [[ -z "$KEY" ]]; then
+  KEY="$HOME/.ssh/id_rsa"
+fi
+
+# Ensure the key file exists.
+if [[ ! -f "$KEY" ]]; then
+  error_exit "Key file '$KEY' does not exist."
+fi
+
+# Set a default timeout (e.g., 3600 seconds) if not provided.
+if [[ -z "$TIMEOUT" ]]; then
+  TIMEOUT="3600"
+fi
+
+# ----------------------------------------------------------------------------
+# Check if an SSH agent is already running
+# ----------------------------------------------------------------------------
+# If SSH_AGENT_PID is set, try to list keys (this tests the connectivity).
+if [[ -n "$SSH_AGENT_PID" ]]; then
+  if ssh-add -l >/dev/null 2>&1; then
+    AGENT_RUNNING=true
+  else
+    AGENT_RUNNING=false
+  fi
+else
+  AGENT_RUNNING=false
+fi
+
+# ----------------------------------------------------------------------------
+# Start SSH agent if necessary
+# ----------------------------------------------------------------------------
+if ! $AGENT_RUNNING; then
+  # Start a new SSH agent, outputting the necessary environment variables.
+  # The output from ssh-agent -s must be eval'ed in the current shell.
+  eval "$(ssh-agent -s)" || error_exit "Failed to start ssh-agent."
+  echo "# Started new ssh-agent." >&2
+else
+  echo "# Using already running ssh-agent." >&2
+fi
+
+# ----------------------------------------------------------------------------
+# Add the SSH key with the timeout
+# ----------------------------------------------------------------------------
+# The -t option specifies the lifetime for the key.
+ssh-add -t "${TIMEOUT}" "${KEY}" || error_exit "Failed to add key '$KEY' with timeout '${TIMEOUT}'."
+
+echo "# Added key '$KEY' with a timeout of ${TIMEOUT}."
+# Output the environment variables so that they can be captured via eval.
+echo "export SSH_AUTH_SOCK=${SSH_AUTH_SOCK};"
+echo "export SSH_AGENT_PID=${SSH_AGENT_PID};"
+
+# End of script.
+exit 0
+
