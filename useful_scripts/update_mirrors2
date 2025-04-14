@@ -31,11 +31,10 @@ sudo reflector --verbose \
   --latest 800 \
   --fastest 800 \
   --cache-timeout 1200 \
+  --protocol https \
   --download-timeout 5 \
   --connection-timeout 5 \
   --sort rate \
   --threads 7 \
-  --protocol https \
   --save /etc/pacman.d/mirrorlist
-
 echo "Mirrorlist updated successfully!"
