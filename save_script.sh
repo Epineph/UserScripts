@@ -45,7 +45,7 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
-DEST_DIR="/opt/scripts"
+DEST_DIR="/usr/local/bin"
 global_choice=""
 
 # Loop through each input file.
