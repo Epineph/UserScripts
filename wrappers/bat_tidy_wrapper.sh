@@ -111,7 +111,7 @@ sed -E '
 ###############################################################################
 bat \
   --language="CSS" \
-  --style "grid,header,numbers" \
+  --style "grid,header,snip" \
   --squeeze-limit="2" \
   -m '*.py:Python' \
   -m '*.cpp:C++' \
@@ -122,4 +122,7 @@ bat \
   --tabs="2" \
   --paging="never" \
   --chop-long-lines \
-  --theme="Dracula" 
+  --set-terminal-title \
+  --wrap="auto" \
+  --strip-ansi="always" \
+  --theme="Monokai Extended Bright" 
