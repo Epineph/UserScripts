@@ -1,0 +1,512 @@
+error: failed to run custom build command for `onig_sys v69.8.1`
+
+Caused by:
+  process didn't exit successfully: `/tmp/tmp.sI16DDubSs/target/release/build/onig_sys-b52ff3641eff8bb7/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=RUSTONIG_DYNAMIC_LIBONIG
+  cargo:rerun-if-env-changed=RUSTONIG_STATIC_LIBONIG
+  cargo:rerun-if-env-changed=RUSTONIG_SYSTEM_LIBONIG
+  OUT_DIR = Some(/tmp/tmp.sI16DDubSs/target/release/build/onig_sys-43b9e76ed63d30b3/out)
+  OPT_LEVEL = Some(3)
+  TARGET = Some(x86_64-unknown-linux-gnu)
+  HOST = Some(x86_64-unknown-linux-gnu)
+  cargo:rerun-if-env-changed=CC_x86_64-unknown-linux-gnu
+  CC_x86_64-unknown-linux-gnu = None
+  cargo:rerun-if-env-changed=CC_x86_64_unknown_linux_gnu
+  CC_x86_64_unknown_linux_gnu = None
+  cargo:rerun-if-env-changed=HOST_CC
+  HOST_CC = None
+  cargo:rerun-if-env-changed=CC
+  CC = None
+  cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+  RUSTC_WRAPPER = None
+  cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+  CRATE_CC_NO_DEFAULTS = None
+  DEBUG = Some(false)
+  CARGO_CFG_TARGET_FEATURE = Some(fxsr,sse,sse2)
+  cargo:rerun-if-env-changed=CFLAGS
+  CFLAGS = None
+  cargo:rerun-if-env-changed=HOST_CFLAGS
+  HOST_CFLAGS = None
+  cargo:rerun-if-env-changed=CFLAGS_x86_64_unknown_linux_gnu
+  CFLAGS_x86_64_unknown_linux_gnu = None
+  cargo:rerun-if-env-changed=CFLAGS_x86_64-unknown-linux-gnu
+  CFLAGS_x86_64-unknown-linux-gnu = None
+  CARGO_ENCODED_RUSTFLAGS = Some()
+  cargo:warning=oniguruma/src/regparse.c: In function 'onig_st_init_strend_table_with_size':
+  cargo:warning=oniguruma/src/regparse.c:588:5: error: initialization of 'int (*)(void)' from incompatible pointer type 'int (*)(st_str_end_key *, st_str_end_key *)' [-Wincompatible-pointer-types]
+  cargo:warning=  588 |     str_end_cmp,
+  cargo:warning=      |     ^~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c:588:5: note: (near initialization for 'hashType.compare')
+  cargo:warning=oniguruma/src/regparse.c:550:1: note: 'str_end_cmp' declared here
+  cargo:warning=  550 | str_end_cmp(st_str_end_key* x, st_str_end_key* y)
+  cargo:warning=      | ^~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c:589:5: error: initialization of 'int (*)(void)' from incompatible pointer type 'int (*)(st_str_end_key *)' [-Wincompatible-pointer-types]
+  cargo:warning=  589 |     str_end_hash,
+  cargo:warning=      |     ^~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c:589:5: note: (near initialization for 'hashType.hash')
+  cargo:warning=oniguruma/src/regparse.c:571:1: note: 'str_end_hash' declared here
+  cargo:warning=  571 | str_end_hash(st_str_end_key* x)
+  cargo:warning=      | ^~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c: In function 'onig_st_init_callout_name_table_with_size':
+  cargo:warning=oniguruma/src/regparse.c:678:5: error: initialization of 'int (*)(void)' from incompatible pointer type 'int (*)(st_callout_name_key *, st_callout_name_key *)' [-Wincompatible-pointer-types]
+  cargo:warning=  678 |     callout_name_table_cmp,
+  cargo:warning=      |     ^~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c:678:5: note: (near initialization for 'hashType.compare')
+  cargo:warning=oniguruma/src/regparse.c:637:1: note: 'callout_name_table_cmp' declared here
+  cargo:warning=  637 | callout_name_table_cmp(st_callout_name_key* x, st_callout_name_key* y)
+  cargo:warning=      | ^~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c:679:5: error: initialization of 'int (*)(void)' from incompatible pointer type 'int (*)(st_callout_name_key *)' [-Wincompatible-pointer-types]
+  cargo:warning=  679 |     callout_name_table_hash,
+  cargo:warning=      |     ^~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c:679:5: note: (near initialization for 'hashType.hash')
+  cargo:warning=oniguruma/src/regparse.c:660:1: note: 'callout_name_table_hash' declared here
+  cargo:warning=  660 | callout_name_table_hash(st_callout_name_key* x)
+  cargo:warning=      | ^~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c: In function 'names_clear':
+  cargo:warning=oniguruma/src/regparse.c:804:24: error: passing argument 2 of 'onig_st_foreach' from incompatible pointer type [-Wincompatible-pointer-types]
+  cargo:warning=  804 |     onig_st_foreach(t, i_free_name_entry, 0);
+  cargo:warning=      |                        ^~~~~~~~~~~~~~~~~
+  cargo:warning=      |                        |
+  cargo:warning=      |                        int (*)(OnigUChar *, NameEntry *, void *) {aka int (*)(unsigned char *, NameEntry *, void *)}
+  cargo:warning=In file included from oniguruma/src/regparse.c:37:
+  cargo:warning=oniguruma/src/st.h:55:31: note: expected 'int (*)(void)' but argument is of type 'int (*)(OnigUChar *, NameEntry *, void *)' {aka 'int (*)(unsigned char *, NameEntry *, void *)'}
+  cargo:warning=   55 | int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
+  cargo:warning=      |                               ^~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:35:18: note: in definition of macro '_'
+  cargo:warning=   35 | # define _(args) args
+  cargo:warning=      |                  ^~~~
+  cargo:warning=oniguruma/src/regparse.c:789:1: note: 'i_free_name_entry' declared here
+  cargo:warning=  789 | i_free_name_entry(UChar* key, NameEntry* e, void* arg ARG_UNUSED)
+  cargo:warning=      | ^~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c: In function 'onig_foreach_name':
+  cargo:warning=oniguruma/src/regparse.c:873:24: error: passing argument 2 of 'onig_st_foreach' from incompatible pointer type [-Wincompatible-pointer-types]
+  cargo:warning=  873 |     onig_st_foreach(t, i_names, (HashDataType )&narg);
+  cargo:warning=      |                        ^~~~~~~
+  cargo:warning=      |                        |
+  cargo:warning=      |                        int (*)(OnigUChar *, NameEntry *, INamesArg *) {aka int (*)(unsigned char *, NameEntry *, INamesArg *)}
+  cargo:warning=oniguruma/src/st.h:55:31: note: expected 'int (*)(void)' but argument is of type 'int (*)(OnigUChar *, NameEntry *, INamesArg *)' {aka 'int (*)(unsigned char *, NameEntry *, INamesArg *)'}
+  cargo:warning=   55 | int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
+  cargo:warning=      |                               ^~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:35:18: note: in definition of macro '_'
+  cargo:warning=   35 | # define _(args) args
+  cargo:warning=      |                  ^~~~
+  cargo:warning=oniguruma/src/regparse.c:846:1: note: 'i_names' declared here
+  cargo:warning=  846 | i_names(UChar* key ARG_UNUSED, NameEntry* e, INamesArg* arg)
+  cargo:warning=      | ^~~~~~~
+  cargo:warning=oniguruma/src/regparse.c: In function 'onig_renumber_name_table':
+  cargo:warning=oniguruma/src/regparse.c:901:24: error: passing argument 2 of 'onig_st_foreach' from incompatible pointer type [-Wincompatible-pointer-types]
+  cargo:warning=  901 |     onig_st_foreach(t, i_renumber_name, (HashDataType )map);
+  cargo:warning=      |                        ^~~~~~~~~~~~~~~
+  cargo:warning=      |                        |
+  cargo:warning=      |                        int (*)(OnigUChar *, NameEntry *, GroupNumMap *) {aka int (*)(unsigned char *, NameEntry *, GroupNumMap *)}
+  cargo:warning=oniguruma/src/st.h:55:31: note: expected 'int (*)(void)' but argument is of type 'int (*)(OnigUChar *, NameEntry *, GroupNumMap *)' {aka 'int (*)(unsigned char *, NameEntry *, GroupNumMap *)'}
+  cargo:warning=   55 | int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
+  cargo:warning=      |                               ^~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:35:18: note: in definition of macro '_'
+  cargo:warning=   35 | # define _(args) args
+  cargo:warning=      |                  ^~~~
+  cargo:warning=oniguruma/src/regparse.c:879:1: note: 'i_renumber_name' declared here
+  cargo:warning=  879 | i_renumber_name(UChar* key ARG_UNUSED, NameEntry* e, GroupNumMap* map)
+  cargo:warning=      | ^~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c: In function 'callout_name_table_clear':
+  cargo:warning=oniguruma/src/regparse.c:1386:24: error: passing argument 2 of 'onig_st_foreach' from incompatible pointer type [-Wincompatible-pointer-types]
+  cargo:warning= 1386 |     onig_st_foreach(t, i_free_callout_name_entry, 0);
+  cargo:warning=      |                        ^~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=      |                        |
+  cargo:warning=      |                        int (*)(st_callout_name_key *, CalloutNameEntry *, void *)
+  cargo:warning=oniguruma/src/st.h:55:31: note: expected 'int (*)(void)' but argument is of type 'int (*)(st_callout_name_key *, CalloutNameEntry *, void *)'
+  cargo:warning=   55 | int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
+  cargo:warning=      |                               ^~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:35:18: note: in definition of macro '_'
+  cargo:warning=   35 | # define _(args) args
+  cargo:warning=      |                  ^~~~
+  cargo:warning=oniguruma/src/regparse.c:1370:1: note: 'i_free_callout_name_entry' declared here
+  cargo:warning= 1370 | i_free_callout_name_entry(st_callout_name_key* key, CalloutNameEntry* e,
+  cargo:warning=      | ^~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c: In function 'setup_ext_callout_list_values':
+  cargo:warning=oniguruma/src/regparse.c:1884:56: error: passing argument 2 of 'onig_st_foreach' from incompatible pointer type [-Wincompatible-pointer-types]
+  cargo:warning= 1884 |     onig_st_foreach((CalloutTagTable *)ext->tag_table, i_callout_callout_list_set,
+  cargo:warning=      |                                                        ^~~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=      |                                                        |
+  cargo:warning=      |                                                        int (*)(OnigUChar *, CalloutTagVal,  void *) {aka int (*)(unsigned char *, long int,  void *)}
+  cargo:warning=oniguruma/src/st.h:55:31: note: expected 'int (*)(void)' but argument is of type 'int (*)(OnigUChar *, CalloutTagVal,  void *)' {aka 'int (*)(unsigned char *, long int,  void *)'}
+  cargo:warning=   55 | int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
+  cargo:warning=      |                               ^~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:35:18: note: in definition of macro '_'
+  cargo:warning=   35 | # define _(args) args
+  cargo:warning=      |                  ^~~~
+  cargo:warning=oniguruma/src/regparse.c:1866:1: note: 'i_callout_callout_list_set' declared here
+  cargo:warning= 1866 | i_callout_callout_list_set(UChar* key, CalloutTagVal e, void* arg)
+  cargo:warning=      | ^~~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/regparse.c: In function 'callout_tag_table_clear':
+  cargo:warning=oniguruma/src/regparse.c:1932:24: error: passing argument 2 of 'onig_st_foreach' from incompatible pointer type [-Wincompatible-pointer-types]
+  cargo:warning= 1932 |     onig_st_foreach(t, i_free_callout_tag_entry, 0);
+  cargo:warning=      |                        ^~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=      |                        |
+  cargo:warning=      |                        int (*)(OnigUChar *, CalloutTagVal,  void *) {aka int (*)(unsigned char *, long int,  void *)}
+  cargo:warning=oniguruma/src/st.h:55:31: note: expected 'int (*)(void)' but argument is of type 'int (*)(OnigUChar *, CalloutTagVal,  void *)' {aka 'int (*)(unsigned char *, long int,  void *)'}
+  cargo:warning=   55 | int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
+  cargo:warning=      |                               ^~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:35:18: note: in definition of macro '_'
+  cargo:warning=   35 | # define _(args) args
+  cargo:warning=      |                  ^~~~
+  cargo:warning=oniguruma/src/regparse.c:1922:1: note: 'i_free_callout_tag_entry' declared here
+  cargo:warning= 1922 | i_free_callout_tag_entry(UChar* key, CalloutTagVal e, void* arg ARG_UNUSED)
+  cargo:warning=      | ^~~~~~~~~~~~~~~~~~~~~~~~
+  exit status: 0
+  exit status: 0
+  exit status: 1
+  cargo:warning=ToolExecError: command did not execute successfully (status code exit status: 1): LC_ALL="C" "cc" "-O3" "-ffunction-sections" "-fdata-sections" "-fPIC" "-m64" "-I" "/tmp/tmp.sI16DDubSs/target/release/build/onig_sys-43b9e76ed63d30b3/out" "-I" "oniguruma/src" "-DHAVE_UNISTD_H=1" "-DHAVE_SYS_TYPES_H=1" "-DHAVE_SYS_TIME_H=1" "-o" "/tmp/tmp.sI16DDubSs/target/release/build/onig_sys-43b9e76ed63d30b3/out/a445302c6d3dcb51-regparse.o" "-c" "oniguruma/src/regparse.c"cargo:warning=oniguruma/src/st.c:38:5: error: initialization of 'int (*)(void)' from incompatible pointer type 'int (*)(long int,  long int)' [-Wincompatible-pointer-types]
+  cargo:warning=   38 |     numcmp,
+  cargo:warning=      |     ^~~~~~
+  cargo:warning=oniguruma/src/st.c:38:5: note: (near initialization for 'type_numhash.compare')
+  cargo:warning=oniguruma/src/st.c:35:12: note: 'numcmp' declared here
+  cargo:warning=   35 | static int numcmp(long, long);
+  cargo:warning=      |            ^~~~~~
+  cargo:warning=oniguruma/src/st.c:39:5: error: initialization of 'int (*)(void)' from incompatible pointer type 'int (*)(long int)' [-Wincompatible-pointer-types]
+  cargo:warning=   39 |     numhash,
+  cargo:warning=      |     ^~~~~~~
+  cargo:warning=oniguruma/src/st.c:39:5: note: (near initialization for 'type_numhash.hash')
+  cargo:warning=oniguruma/src/st.c:36:12: note: 'numhash' declared here
+  cargo:warning=   36 | static int numhash(long);
+  cargo:warning=      |            ^~~~~~~
+  cargo:warning=oniguruma/src/st.c:45:5: error: initialization of 'int (*)(void)' from incompatible pointer type 'int (*)(const char *, const char *)' [-Wincompatible-pointer-types]
+  cargo:warning=   45 |     strcmp,
+  cargo:warning=      |     ^~~~~~
+  cargo:warning=oniguruma/src/st.c:45:5: note: (near initialization for 'type_strhash.compare')
+  cargo:warning=In file included from oniguruma/src/regint.h:111,
+  cargo:warning=                 from oniguruma/src/st.c:9:
+  cargo:warning=/usr/include/string.h:156:12: note: 'strcmp' declared here
+  cargo:warning=  156 | extern int strcmp (const char *__s1, const char *__s2)
+  cargo:warning=      |            ^~~~~~
+  cargo:warning=oniguruma/src/st.c:46:5: error: initialization of 'int (*)(void)' from incompatible pointer type 'int (*)(const char *)' [-Wincompatible-pointer-types]
+  cargo:warning=   46 |     strhash,
+  cargo:warning=      |     ^~~~~~~
+  cargo:warning=oniguruma/src/st.c:46:5: note: (near initialization for 'type_strhash.hash')
+  cargo:warning=oniguruma/src/st.c:43:12: note: 'strhash' declared here
+  cargo:warning=   43 | static int strhash(const char *);
+  cargo:warning=      |            ^~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'new_size':
+  cargo:warning=oniguruma/src/st.c:101:1: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  101 | new_size(size)
+  cargo:warning=      | ^~~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_init_table_with_size':
+  cargo:warning=oniguruma/src/regint.h:220:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  220 | #define st_init_table_with_size     onig_st_init_table_with_size
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:140:1: note: in expansion of macro 'st_init_table_with_size'
+  cargo:warning=  140 | st_init_table_with_size(type, size)
+  cargo:warning=      | ^~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_init_table':
+  cargo:warning=oniguruma/src/regint.h:219:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  219 | #define st_init_table               onig_st_init_table
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:172:1: note: in expansion of macro 'st_init_table'
+  cargo:warning=  172 | st_init_table(type)
+  cargo:warning=      | ^~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_init_numtable_with_size':
+  cargo:warning=oniguruma/src/regint.h:222:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  222 | #define st_init_numtable_with_size  onig_st_init_numtable_with_size
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:185:1: note: in expansion of macro 'st_init_numtable_with_size'
+  cargo:warning=  185 | st_init_numtable_with_size(size)
+  cargo:warning=      | ^~~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_init_strtable_with_size':
+  cargo:warning=oniguruma/src/regint.h:224:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  224 | #define st_init_strtable_with_size  onig_st_init_strtable_with_size
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:198:1: note: in expansion of macro 'st_init_strtable_with_size'
+  cargo:warning=  198 | st_init_strtable_with_size(size)
+  cargo:warning=      | ^~~~~~~~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_free_table':
+  cargo:warning=oniguruma/src/regint.h:231:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  231 | #define st_free_table               onig_st_free_table
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:205:1: note: in expansion of macro 'st_free_table'
+  cargo:warning=  205 | st_free_table(table)
+  cargo:warning=      | ^~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_lookup':
+  cargo:warning=oniguruma/src/regint.h:228:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  228 | #define st_lookup                   onig_st_lookup
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:245:1: note: in expansion of macro 'st_lookup'
+  cargo:warning=  245 | st_lookup(table, key, value)
+  cargo:warning=      | ^~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:56:43: error: too many arguments to function 'table->type->hash'; expected 0, have 1
+  cargo:warning=   56 | #define do_hash(key,table) (unsigned int)(*(table)->type->hash)((key))
+  cargo:warning=      |                                          ~^~~~~~~~~~~~~~~~~~~~~ ~~~~~
+  cargo:warning=oniguruma/src/st.c:253:14: note: in expansion of macro 'do_hash'
+  cargo:warning=  253 |   hash_val = do_hash(key, table);
+  cargo:warning=      |              ^~~~~~~
+  cargo:warning=In file included from oniguruma/src/st.c:10:
+  cargo:warning=oniguruma/src/st.h:20:11: note: declared here
+  cargo:warning=   20 |     int (*hash)();
+  cargo:warning=      |           ^~~~
+  cargo:warning=oniguruma/src/st.c:54:40: error: too many arguments to function 'table->type->compare'; expected 0, have 2
+  cargo:warning=   54 | #define EQUAL(table,x,y) ((x)==(y) || (*table->type->compare)((x),(y)) == 0)
+  cargo:warning=      |                                       ~^~~~~~~~~~~~~~~~~~~~~~ ~~~
+  cargo:warning=oniguruma/src/st.c:224:45: note: in expansion of macro 'EQUAL'
+  cargo:warning=  224 | ((ptr) != 0 && (ptr->hash != (hash_val) || !EQUAL((table), (key), (ptr)->key)))
+  cargo:warning=      |                                             ^~~~~
+  cargo:warning=oniguruma/src/st.c:235:9: note: in expansion of macro 'PTR_NOT_EQUAL'
+  cargo:warning=  235 |     if (PTR_NOT_EQUAL(table, ptr, hash_val, key)) {\
+  cargo:warning=      |         ^~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:254:3: note: in expansion of macro 'FIND_ENTRY'
+  cargo:warning=  254 |   FIND_ENTRY(table, ptr, hash_val, bin_pos);
+  cargo:warning=      |   ^~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:19:11: note: declared here
+  cargo:warning=   19 |     int (*compare)();
+  cargo:warning=      |           ^~~~~~~
+  cargo:warning=oniguruma/src/st.c:54:40: error: too many arguments to function 'table->type->compare'; expected 0, have 2
+  cargo:warning=   54 | #define EQUAL(table,x,y) ((x)==(y) || (*table->type->compare)((x),(y)) == 0)
+  cargo:warning=      |                                       ~^~~~~~~~~~~~~~~~~~~~~~ ~~~
+  cargo:warning=oniguruma/src/st.c:224:45: note: in expansion of macro 'EQUAL'
+  cargo:warning=  224 | ((ptr) != 0 && (ptr->hash != (hash_val) || !EQUAL((table), (key), (ptr)->key)))
+  cargo:warning=      |                                             ^~~~~
+  cargo:warning=oniguruma/src/st.c:237:14: note: in expansion of macro 'PTR_NOT_EQUAL'
+  cargo:warning=  237 |       while (PTR_NOT_EQUAL(table, ptr->next, hash_val, key)) {\
+  cargo:warning=      |              ^~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:254:3: note: in expansion of macro 'FIND_ENTRY'
+  cargo:warning=  254 |   FIND_ENTRY(table, ptr, hash_val, bin_pos);
+  cargo:warning=      |   ^~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:19:11: note: declared here
+  cargo:warning=   19 |     int (*compare)();
+  cargo:warning=      |           ^~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_insert':
+  cargo:warning=oniguruma/src/regint.h:227:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  227 | #define st_insert                   onig_st_insert
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:283:1: note: in expansion of macro 'st_insert'
+  cargo:warning=  283 | st_insert(table, key, value)
+  cargo:warning=      | ^~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:56:43: error: too many arguments to function 'table->type->hash'; expected 0, have 1
+  cargo:warning=   56 | #define do_hash(key,table) (unsigned int)(*(table)->type->hash)((key))
+  cargo:warning=      |                                          ~^~~~~~~~~~~~~~~~~~~~~ ~~~~~
+  cargo:warning=oniguruma/src/st.c:291:14: note: in expansion of macro 'do_hash'
+  cargo:warning=  291 |   hash_val = do_hash(key, table);
+  cargo:warning=      |              ^~~~~~~
+  cargo:warning=oniguruma/src/st.h:20:11: note: declared here
+  cargo:warning=   20 |     int (*hash)();
+  cargo:warning=      |           ^~~~
+  cargo:warning=oniguruma/src/st.c:54:40: error: too many arguments to function 'table->type->compare'; expected 0, have 2
+  cargo:warning=   54 | #define EQUAL(table,x,y) ((x)==(y) || (*table->type->compare)((x),(y)) == 0)
+  cargo:warning=      |                                       ~^~~~~~~~~~~~~~~~~~~~~~ ~~~
+  cargo:warning=oniguruma/src/st.c:224:45: note: in expansion of macro 'EQUAL'
+  cargo:warning=  224 | ((ptr) != 0 && (ptr->hash != (hash_val) || !EQUAL((table), (key), (ptr)->key)))
+  cargo:warning=      |                                             ^~~~~
+  cargo:warning=oniguruma/src/st.c:235:9: note: in expansion of macro 'PTR_NOT_EQUAL'
+  cargo:warning=  235 |     if (PTR_NOT_EQUAL(table, ptr, hash_val, key)) {\
+  cargo:warning=      |         ^~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:292:3: note: in expansion of macro 'FIND_ENTRY'
+  cargo:warning=  292 |   FIND_ENTRY(table, ptr, hash_val, bin_pos);
+  cargo:warning=      |   ^~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:19:11: note: declared here
+  cargo:warning=   19 |     int (*compare)();
+  cargo:warning=      |           ^~~~~~~
+  cargo:warning=oniguruma/src/st.c:54:40: error: too many arguments to function 'table->type->compare'; expected 0, have 2
+  cargo:warning=   54 | #define EQUAL(table,x,y) ((x)==(y) || (*table->type->compare)((x),(y)) == 0)
+  cargo:warning=      |                                       ~^~~~~~~~~~~~~~~~~~~~~~ ~~~
+  cargo:warning=oniguruma/src/st.c:224:45: note: in expansion of macro 'EQUAL'
+  cargo:warning=  224 | ((ptr) != 0 && (ptr->hash != (hash_val) || !EQUAL((table), (key), (ptr)->key)))
+  cargo:warning=      |                                             ^~~~~
+  cargo:warning=oniguruma/src/st.c:237:14: note: in expansion of macro 'PTR_NOT_EQUAL'
+  cargo:warning=  237 |       while (PTR_NOT_EQUAL(table, ptr->next, hash_val, key)) {\
+  cargo:warning=      |              ^~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:292:3: note: in expansion of macro 'FIND_ENTRY'
+  cargo:warning=  292 |   FIND_ENTRY(table, ptr, hash_val, bin_pos);
+  cargo:warning=      |   ^~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:19:11: note: declared here
+  cargo:warning=   19 |     int (*compare)();
+  cargo:warning=      |           ^~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_add_direct':
+  cargo:warning=oniguruma/src/regint.h:230:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  230 | #define st_add_direct               onig_st_add_direct
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:305:1: note: in expansion of macro 'st_add_direct'
+  cargo:warning=  305 | st_add_direct(table, key, value)
+  cargo:warning=      | ^~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:56:43: error: too many arguments to function 'table->type->hash'; expected 0, have 1
+  cargo:warning=   56 | #define do_hash(key,table) (unsigned int)(*(table)->type->hash)((key))
+  cargo:warning=      |                                          ~^~~~~~~~~~~~~~~~~~~~~ ~~~~~
+  cargo:warning=oniguruma/src/st.c:312:14: note: in expansion of macro 'do_hash'
+  cargo:warning=  312 |   hash_val = do_hash(key, table);
+  cargo:warning=      |              ^~~~~~~
+  cargo:warning=oniguruma/src/st.h:20:11: note: declared here
+  cargo:warning=   20 |     int (*hash)();
+  cargo:warning=      |           ^~~~
+  cargo:warning=oniguruma/src/st.c: In function 'rehash':
+  cargo:warning=oniguruma/src/st.c:318:1: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  318 | rehash(table)
+  cargo:warning=      | ^~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_copy':
+  cargo:warning=oniguruma/src/regint.h:233:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  233 | #define st_copy                     onig_st_copy
+  cargo:warning=      |                                     ^~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:350:1: note: in expansion of macro 'st_copy'
+  cargo:warning=  350 | st_copy(old_table)
+  cargo:warning=      | ^~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_delete':
+  cargo:warning=oniguruma/src/regint.h:225:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  225 | #define st_delete                   onig_st_delete
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:391:1: note: in expansion of macro 'st_delete'
+  cargo:warning=  391 | st_delete(table, key, value)
+  cargo:warning=      | ^~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:56:43: error: too many arguments to function 'table->type->hash'; expected 0, have 1
+  cargo:warning=   56 | #define do_hash(key,table) (unsigned int)(*(table)->type->hash)((key))
+  cargo:warning=      |                                          ~^~~~~~~~~~~~~~~~~~~~~ ~~~~~
+  cargo:warning=oniguruma/src/st.c:57:33: note: in expansion of macro 'do_hash'
+  cargo:warning=   57 | #define do_hash_bin(key,table) (do_hash(key, table)%(table)->num_bins)
+  cargo:warning=      |                                 ^~~~~~~
+  cargo:warning=oniguruma/src/st.c:400:14: note: in expansion of macro 'do_hash_bin'
+  cargo:warning=  400 |   hash_val = do_hash_bin(*key, table);
+  cargo:warning=      |              ^~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:20:11: note: declared here
+  cargo:warning=   20 |     int (*hash)();
+  cargo:warning=      |           ^~~~
+  cargo:warning=oniguruma/src/st.c:54:40: error: too many arguments to function 'table->type->compare'; expected 0, have 2
+  cargo:warning=   54 | #define EQUAL(table,x,y) ((x)==(y) || (*table->type->compare)((x),(y)) == 0)
+  cargo:warning=      |                                       ~^~~~~~~~~~~~~~~~~~~~~~ ~~~
+  cargo:warning=oniguruma/src/st.c:408:7: note: in expansion of macro 'EQUAL'
+  cargo:warning=  408 |   if (EQUAL(table, *key, ptr->key)) {
+  cargo:warning=      |       ^~~~~
+  cargo:warning=oniguruma/src/st.h:19:11: note: declared here
+  cargo:warning=   19 |     int (*compare)();
+  cargo:warning=      |           ^~~~~~~
+  cargo:warning=oniguruma/src/st.c:54:40: error: too many arguments to function 'table->type->compare'; expected 0, have 2
+  cargo:warning=   54 | #define EQUAL(table,x,y) ((x)==(y) || (*table->type->compare)((x),(y)) == 0)
+  cargo:warning=      |                                       ~^~~~~~~~~~~~~~~~~~~~~~ ~~~
+  cargo:warning=oniguruma/src/st.c:418:9: note: in expansion of macro 'EQUAL'
+  cargo:warning=  418 |     if (EQUAL(table, ptr->next->key, *key)) {
+  cargo:warning=      |         ^~~~~
+  cargo:warning=oniguruma/src/st.h:19:11: note: declared here
+  cargo:warning=   19 |     int (*compare)();
+  cargo:warning=      |           ^~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_delete_safe':
+  cargo:warning=oniguruma/src/regint.h:226:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  226 | #define st_delete_safe              onig_st_delete_safe
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:433:1: note: in expansion of macro 'st_delete_safe'
+  cargo:warning=  433 | st_delete_safe(table, key, value, never)
+  cargo:warning=      | ^~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:56:43: error: too many arguments to function 'table->type->hash'; expected 0, have 1
+  cargo:warning=   56 | #define do_hash(key,table) (unsigned int)(*(table)->type->hash)((key))
+  cargo:warning=      |                                          ~^~~~~~~~~~~~~~~~~~~~~ ~~~~~
+  cargo:warning=oniguruma/src/st.c:57:33: note: in expansion of macro 'do_hash'
+  cargo:warning=   57 | #define do_hash_bin(key,table) (do_hash(key, table)%(table)->num_bins)
+  cargo:warning=      |                                 ^~~~~~~
+  cargo:warning=oniguruma/src/st.c:442:14: note: in expansion of macro 'do_hash_bin'
+  cargo:warning=  442 |   hash_val = do_hash_bin(*key, table);
+  cargo:warning=      |              ^~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:20:11: note: declared here
+  cargo:warning=   20 |     int (*hash)();
+  cargo:warning=      |           ^~~~
+  cargo:warning=oniguruma/src/st.c:54:40: error: too many arguments to function 'table->type->compare'; expected 0, have 2
+  cargo:warning=   54 | #define EQUAL(table,x,y) ((x)==(y) || (*table->type->compare)((x),(y)) == 0)
+  cargo:warning=      |                                       ~^~~~~~~~~~~~~~~~~~~~~~ ~~~
+  cargo:warning=oniguruma/src/st.c:451:32: note: in expansion of macro 'EQUAL'
+  cargo:warning=  451 |     if ((ptr->key != never) && EQUAL(table, ptr->key, *key)) {
+  cargo:warning=      |                                ^~~~~
+  cargo:warning=oniguruma/src/st.h:19:11: note: declared here
+  cargo:warning=   19 |     int (*compare)();
+  cargo:warning=      |           ^~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_cleanup_safe':
+  cargo:warning=oniguruma/src/regint.h:232:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  232 | #define st_cleanup_safe             onig_st_cleanup_safe
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:477:1: note: in expansion of macro 'st_cleanup_safe'
+  cargo:warning=  477 | st_cleanup_safe(table, never)
+  cargo:warning=      | ^~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:483:21: error: passing argument 2 of 'onig_st_foreach' from incompatible pointer type [-Wincompatible-pointer-types]
+  cargo:warning=  483 |   st_foreach(table, delete_never, never);
+  cargo:warning=      |                     ^~~~~~~~~~~~
+  cargo:warning=      |                     |
+  cargo:warning=      |                     int (*)(st_data_t,  st_data_t,  st_data_t) {aka int (*)(long unsigned int,  long unsigned int,  long unsigned int)}
+  cargo:warning=oniguruma/src/st.h:55:31: note: expected 'int (*)(void)' but argument is of type 'int (*)(st_data_t,  st_data_t,  st_data_t)' {aka 'int (*)(long unsigned int,  long unsigned int,  long unsigned int)'}
+  cargo:warning=   55 | int st_foreach _((st_table *, int (*)(ANYARGS), st_data_t));
+  cargo:warning=      |                               ^~~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.h:35:18: note: in definition of macro '_'
+  cargo:warning=   35 | # define _(args) args
+  cargo:warning=      |                  ^~~~
+  cargo:warning=oniguruma/src/st.c:465:1: note: 'delete_never' declared here
+  cargo:warning=  465 | delete_never(st_data_t key __attribute__ ((unused)), st_data_t value,
+  cargo:warning=      | ^~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'onig_st_foreach':
+  cargo:warning=oniguruma/src/regint.h:229:37: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  229 | #define st_foreach                  onig_st_foreach
+  cargo:warning=      |                                     ^~~~~~~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:488:1: note: in expansion of macro 'st_foreach'
+  cargo:warning=  488 | st_foreach(table, func, arg)
+  cargo:warning=      | ^~~~~~~~~~
+  cargo:warning=oniguruma/src/st.c:500:23: error: too many arguments to function 'func'; expected 0, have 3
+  cargo:warning=  500 |             retval = (*func)(ptr->key, ptr->record, arg);
+  cargo:warning=      |                      ~^~~~~~ ~~~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'strhash':
+  cargo:warning=oniguruma/src/st.c:538:1: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  538 | strhash(string)
+  cargo:warning=      | ^~~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'numcmp':
+  cargo:warning=oniguruma/src/st.c:577:1: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  577 | numcmp(x, y)
+  cargo:warning=      | ^~~~~~
+  cargo:warning=oniguruma/src/st.c: In function 'numhash':
+  cargo:warning=oniguruma/src/st.c:584:1: warning: old-style function definition [-Wold-style-definition]
+  cargo:warning=  584 | numhash(n)
+  cargo:warning=      | ^~~~~~~
+
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 1
+  cargo:warning=ToolExecError: command did not execute successfully (status code exit status: 1): LC_ALL="C" "cc" "-O3" "-ffunction-sections" "-fdata-sections" "-fPIC" "-m64" "-I" "/tmp/tmp.sI16DDubSs/target/release/build/onig_sys-43b9e76ed63d30b3/out" "-I" "oniguruma/src" "-DHAVE_UNISTD_H=1" "-DHAVE_SYS_TYPES_H=1" "-DHAVE_SYS_TIME_H=1" "-o" "/tmp/tmp.sI16DDubSs/target/release/build/onig_sys-43b9e76ed63d30b3/out/a445302c6d3dcb51-st.o" "-c" "oniguruma/src/st.c"
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+  exit status: 0
+
+  --- stderr
+
+
+  error occurred in cc-rs: command did not execute successfully (status code exit status: 1): LC_ALL="C" "cc" "-O3" "-ffunction-sections" "-fdata-sections" "-fPIC" "-m64" "-I" "/tmp/tmp.sI16DDubSs/target/release/build/onig_sys-43b9e76ed63d30b3/out" "-I" "oniguruma/src" "-DHAVE_UNISTD_H=1" "-DHAVE_SYS_TYPES_H=1" "-DHAVE_SYS_TIME_H=1" "-o" "/tmp/tmp.sI16DDubSs/target/release/build/onig_sys-43b9e76ed63d30b3/out/a445302c6d3dcb51-st.o" "-c" "oniguruma/src/st.c"
+
+
+error: failed to compile `bat v0.25.0 (/tmp/tmp.sI16DDubSs)`, intermediate artifacts can be found at `/tmp/tmp.sI16DDubSs/target`.
+To reuse those artifacts with a future compilation, set the environment variable `CARGO_TARGET_DIR` to that path.
