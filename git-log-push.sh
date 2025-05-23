@@ -72,9 +72,10 @@ mkdir -p "$LOG_DIR"
   echo "=== Diff between HEAD~1 and HEAD (side-by-side) ==="
   # If you have 'bat' installed, use it for a colorized diff:
   if command -v bat &>/dev/null; then
-    git diff --color=always --word-diff=color | diff-so-fancy --colors
+    git diff --color=always --word-diff=color --ignore-space-at-eol --stat --side-by-side HEAD~1 HEAD \
+      | bat --paging=never --language=diff
   else
-    git diff --color=always --word-diff=color | diff-so-fancy --patch
+    git diff --color=always --word-diff=color --ignore-space-at-eol --stat --side-by-side HEAD~1 HEAD
   fi
 
   echo
