@@ -107,6 +107,16 @@ EXTENSIONS=(
   dbaeumer.vscode-eslint
   eamodio.gitlens
   ms-azuretools.vscode-docker
+  timonwong.shellcheck
+  bbenoist.Vagrant
+  bbenoist.Doxygen
+  bbenoist.Nix
+  timonwong.shellcheck
+  bmalehorn.shell-syntax
+  jeff-hykin.better-syntax
+  peaceshi.syntax-highlight
+  foxundermoon.shell-format
+
 
   # LSP and IntelliSense
   ms-vscode.vscode-typescript-next
