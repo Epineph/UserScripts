@@ -79,6 +79,23 @@ else
   echo "'code' CLI already installed."
 fi
 
+
+EXTRA_LANG_EXTENSIONS=(
+  mads-hartmann.bash-ide-vscode     # Bash LSP
+  foxundermoon.shell-format         # Shell formatter
+  ms-python.vscode-pylance          # Python LSP
+  njpwerner.autodocstring           # Python docstrings
+  ms-python.isort                   # Python import sorter
+  jebbs.plantuml                    # UML for Java docs
+)
+
+echo "Installing extra language extensions..."
+for ext in "${EXTRA_LANG_EXTENSIONS[@]}"; do
+  code --install-extension "$ext" --force || true
+  echo "  • $ext"
+done
+
+
 # -----------------------------------------------------------------------------
 # Install VS Code extensions
 # -----------------------------------------------------------------------------
