@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-copy_rich_recursive.py: Recursively copy files or directories with a Windows-like progress interface.
+copy_rich_recursive.py: Recursively copy files or directories with a Windows-like progress interface,
+reporting totals in MiB.
 
 Usage:
     copy_rich_recursive.py SRC [SRC ...] DEST
@@ -28,7 +29,7 @@ This script:
     3. Computes the total byte size of all files.
     4. Recreates source hierarchy under DEST; creates missing directories.
     5. Uses `pv` in numeric JSON mode to monitor each file's copy progress.
-    6. Displays per-file and aggregate progress bars with Rich.
+    6. Displays per-file and aggregate progress bars with Rich, showing MiB totals.
 """
 import argparse
 import json
@@ -38,8 +39,17 @@ import subprocess
 
 from rich.progress import (
     Progress, BarColumn, TextColumn, TimeElapsedColumn,
-    TransferSpeedColumn, TimeRemainingColumn
+    TransferSpeedColumn, TimeRemainingColumn, ProgressColumn
 )
+from rich.text import Text
+
+class MBColumn(ProgressColumn):
+    """Displays completed/total in mebibytes (MiB)."""
+    def render(self, task):
+        completed_mib = task.completed / (1024 * 1024)
+        total_mib = task.total / (1024 * 1024) if task.total else 0
+        return Text(f"{completed_mib:.1f}/{total_mib:.1f} MiB")
+
 
 def collect_files(sources):
     """
@@ -76,7 +86,7 @@ def build_dest_path(src_path, sources, dest_root):
 def main():
     # Argument parsing
     parser = argparse.ArgumentParser(
-        description="Recursively copy with Windows-like progress UI."
+        description="Recursively copy with Windows-like progress UI reporting MiB totals."
     )
     parser.add_argument('sources', nargs='+',
                         help='Source files or directories (shell wildcard expansion OK)')
@@ -105,7 +115,7 @@ def main():
         TimeRemainingColumn(),
         TextColumn("[cyan]Total:"),
         BarColumn(bar_width=None),
-        TextColumn("{task.completed}/{task.total} bytes"),
+        MBColumn(),
         expand=True
     )
 
