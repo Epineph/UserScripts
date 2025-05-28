@@ -1,207 +1,163 @@
-#!/usr/bin/env python3
-"""
-Hyprland Monitor Configuration Control Utility
+#!/usr/bin/env bash
+############################################################################
+# power-schedule
+#
+# Like schedule_power.sh, but now supports:
+#   - Ctrl+C override: press Ctrl+C at any point to force immediate reboot/shutdown.
+#
+# Usage: $(basename "$0") -r|-s [-H hours] [-M minutes] [-S seconds] [options]
+# (same options as before, see usage() below)
+############################################################################
 
-This script manages monitor configurations using Hyprland's controller 'hyprctl'.
-It supports enabling and disabling monitors and now integrates an HDMI-A-1 flag.
-It is intended to be bound to key combinations—one for turning off HDMI-A-1 and one for turning it on.
+# ─── Defaults & State ────────────────────────────────────────────────────────
+default_hours=0
+default_minutes=0
+default_seconds=0
 
-Usage Examples:
-    Disable HDMI-A-1:
-        ./monitor_control.py disable --hdmi
-    Enable HDMI-A-1 (with force):
-        ./monitor_control.py enable -f --hdmi
+MODE=""
+HOURS=$default_hours
+MINUTES=$default_minutes
+SECONDS=$default_seconds
+NOTIFY=0
+QUIET=0
+RECURRENCE=0
 
-Optional Flags:
-    --hdmi          Override the monitor name to "HDMI-A-1".
-    --force, -f     Force configuration reload if the monitor is already enabled.
-    --defaults      Use preferred auto configuration if no state file is found.
-"""
+override=0   # flag set when Ctrl+C (SIGINT) is caught
 
-import sys
-import json
-import typing
-import argparse
-import subprocess
-import tempfile
-from enum import Enum
-from pathlib import Path
-from subprocess import CalledProcessError
+# ─── Helper: Usage ───────────────────────────────────────────────────────────
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") -r|-s [-H hours] [-M minutes] [-S seconds] [options]
+Options:
+  -r               Schedule a reboot
+  -s               Schedule a shutdown
+  -H hours         Delay in hours (default: 0)
+  -M minutes       Delay in minutes (default: 0)
+  -S seconds       Delay in seconds (default: 0)
+  -n               Enable desktop notifications
+  -R minutes       Send recurrent notifications every N minutes
+  -q               Quiet mode (no console output; implies -n)
+  -h               Show this help message and exit
+EOF
+  exit 1
+}
 
+# ─── Helper: Human-readable duration ──────────────────────────────────────────
+humanize_duration() {
+  local secs=$1
+  local h=$((secs/3600))
+  local m=$(((secs%3600)/60))
+  local s=$((secs%60))
+  local parts=()
+  (( h > 0 )) && parts+=("$h hour$([ "$h" -ne 1 ] && echo "s")")
+  (( m > 0 )) && parts+=("$m minute$([ "$m" -ne 1 ] && echo "s")")
+  (( s > 0 )) && parts+=("$s second$([ "$s" -ne 1 ] && echo "s")")
+  [[ ${#parts[@]} -eq 0 ]] && parts+=( "0 seconds" )
+  IFS=", " ; echo "${parts[*]}"
+}
 
-class Command(Enum):
-    ENABLE = 'enable'
-    DISABLE = 'disable'
+# ─── Helper: Send desktop notification (if installed) ────────────────────────
+send_notification() {
+  local title="Countdown Power"
+  local message="$1"
+  command -v notify-send &>/dev/null && notify-send "$title" "$message"
+}
 
-    def __str__(self):
-        return self.name.lower()
+# ─── Signal-trap Handler ─────────────────────────────────────────────────────
+# Called on SIGINT (Ctrl+C).  Sets override flag and jumps out of the loop.
+on_override() {
+  override=1
+  # remove the trap so we don't re-enter if another SIGINT arrives
+  trap - INT
+}
 
+# ─── Parse options ───────────────────────────────────────────────────────────
+while getopts "rsH:M:S:R:nqh" opt; do
+  case "$opt" in
+    r) MODE="reboot"   ;;
+    s) MODE="shutdown" ;;
+    H) HOURS=$OPTARG   ;;
+    M) MINUTES=$OPTARG ;;
+    S) SECONDS=$OPTARG ;;
+    R) RECURRENCE=$OPTARG ;;
+    n) NOTIFY=1        ;;
+    q) QUIET=1; NOTIFY=1 ;;
+    h|*) usage         ;;
+  esac
+done
 
-def main(
-    command: Command,
-    monitor_name: typing.Optional[str] = None,
-    *,
-    force: bool = False,
-    use_defaults: bool = False
-):
-    # If no monitor name is provided, choose the focused monitor.
-    if not monitor_name:
-        monitor_name = getFocusedMonitorName()
+# ─── Validate inputs ─────────────────────────────────────────────────────────
+[[ -z "$MODE" ]] && echo "Error: must specify -r or -s." >&2 && usage
+for var in HOURS MINUTES SECONDS RECURRENCE; do
+  [[ "${!var}" =~ ^[0-9]+$ ]] || { 
+    echo "Error: $var must be a non-negative integer." >&2
+    usage
+  }
+done
 
-    # Generate the path to the temporary state file.
-    config_file = Path(tempfile.gettempdir()) / f'hyprland-{monitor_name}.state'
+TOTAL_DELAY=$(( HOURS*3600 + MINUTES*60 + SECONDS ))
+(( TOTAL_DELAY > 0 )) || {
+  echo "Error: total delay must be > 0." >&2
+  usage
+}
 
-    if command == Command.ENABLE:
-        enableMonitor(monitor_name, config_file, force=force, use_defaults=use_defaults)
-    elif command == Command.DISABLE:
-        disableMonitor(monitor_name, config_file)
-    else:
-        raise RuntimeError(f"Unhandled command ({command})")
+HALF_THRESHOLD=$(( TOTAL_DELAY/2 ))
+(( TOTAL_DELAY > 300 )) && LAST5_THRESHOLD=$(( TOTAL_DELAY - 300 )) || LAST5_THRESHOLD=-1
+RECURRENCE_SEC=$(( RECURRENCE * 60 ))
 
+# ─── Summary ─────────────────────────────────────────────────────────────────
+(( QUIET == 0 )) && \
+  echo "Scheduled $MODE in $(humanize_duration $TOTAL_DELAY) (Total: $TOTAL_DELAY seconds)."
+(( NOTIFY == 1 )) && \
+  send_notification "Scheduled $MODE in $(humanize_duration $TOTAL_DELAY)"
 
-def disableMonitor(monitor_name: str, config_file: Path):
-    """
-    Disables the given monitor.
+# ─── Install SIGINT trap for override ────────────────────────────────────────
+trap 'on_override' INT
 
-    Saves the current monitor configuration to a temporary state file for later restoration,
-    then issues a hyprctl command to disable the monitor.
-    """
-    # Save the current monitor configuration in a temporary file.
-    config = getMonitorConfig(monitor_name)  # use default behavior (print error if not found)
-    if config is None:
-        printError(f"Cannot disable monitor because its configuration could not be retrieved ({monitor_name}).")
-        return
+# ─── Countdown Loop ─────────────────────────────────────────────────────────
+remaining=$TOTAL_DELAY
+while (( remaining > 0 && override == 0 )); do
+  # on-screen timer
+  if (( QUIET == 0 )); then
+    printf "\rTime left: %02d:%02d:%02d " \
+      $((remaining/3600)) \
+      $(((remaining%3600)/60)) \
+      $((remaining%60))
+  fi
 
-    with config_file.open('w') as fd:
-        json.dump(config, fd)
+  # notifications
+  if (( NOTIFY == 1 )); then
+    if (( RECURRENCE_SEC > 0 )); then
+      (( remaining % RECURRENCE_SEC == 0 )) && \
+        send_notification "$MODE in $(humanize_duration $remaining)"
+    else
+      (( remaining == HALF_THRESHOLD )) && \
+        send_notification "Halfway there: $MODE in $(humanize_duration $remaining)"
+      (( LAST5_THRESHOLD >= 0 && remaining == LAST5_THRESHOLD )) && \
+        send_notification "$MODE in 5 minutes"
+    fi
+  fi
 
-    try:
-        # Execute the hyprctl command to disable the specified monitor.
-        subprocess.check_call(f'hyprctl keyword monitor {monitor_name},disable', shell=True)
-    except CalledProcessError as e:
-        raise RuntimeError(f"Error executing hyprctl command: {e}")
+  sleep 1
+  (( remaining-- ))
+done
 
+# ─── Finalize ────────────────────────────────────────────────────────────────
+echo
+if (( override == 1 )); then
+  # User pressed Ctrl+C
+  echo "Override detected—executing $MODE immediately!"
+  (( NOTIFY == 1 )) && send_notification "Override: executing $MODE now."
+else
+  # Countdown naturally expired
+  (( QUIET == 0 )) && echo "Time is up! Executing $MODE now..."
+  (( NOTIFY == 1 )) && send_notification "Time is up! Executing $MODE now."
+fi
 
-def enableMonitor(
-    monitor_name: str,
-    config_file: Path,
-    *,
-    force: bool = False,
-    use_defaults: bool = False
-):
-    """
-    Enables a monitor by restoring its previous configuration.
+# ─── Execute ────────────────────────────────────────────────────────────────
+if [[ "$MODE" == "reboot" ]]; then
+  sudo systemctl reboot
+else
+  sudo systemctl poweroff
+fi
 
-    If a state file exists, it restores the monitor's configuration. With the '--defaults'
-    flag, it falls back to a default auto-configuration if no state file is found.
-    """
-    # Instead of throwing an error when the monitor is not active, we call getMonitorConfig with silent=True.
-    current_config = getMonitorConfig(monitor_name, silent=True)
-    if current_config is not None and not force:
-        printError("Monitor is already enabled. Use '-f' or '--force' if you want to override the current configuration.")
-        return
-
-    try:
-        if not config_file.exists():
-            if not use_defaults:
-                printError("Unable to find monitor state file. Use '--defaults' to use preferred auto configuration instead.")
-                return
-            # Use default configuration if state file is missing.
-            subprocess.check_call(f'hyprctl keyword monitor {monitor_name},preferred,auto,1', shell=True)
-        else:
-            # Load the saved monitor configuration.
-            with config_file.open('r') as fd:
-                monitor = json.load(fd)
-
-            # Format the monitor configuration string.
-            monitor_cfg = '{name},{width}x{height}@{refresh_rate},{x}x{y},{scale}'.format(
-                name=monitor['name'],
-                width=monitor['width'],
-                height=monitor['height'],
-                refresh_rate=monitor['refreshRate'],
-                x=monitor['x'],
-                y=monitor['y'],
-                scale=monitor['scale']
-            )
-
-            subprocess.check_call(f'hyprctl keyword monitor {monitor_cfg}', shell=True)
-    except CalledProcessError as e:
-        raise RuntimeError(f"Error executing hyprctl command: {e}")
-
-
-def getFocusedMonitorName() -> str:
-    """
-    Returns the name of the currently focused monitor, based on hyprctl's JSON output.
-    """
-    try:
-        monitor = next((m for m in getMonitors() if m.get('focused')), None)
-        if not monitor:
-            raise RuntimeError("No monitor is focused")
-        else:
-            return monitor['name']
-    except CalledProcessError as e:
-        raise RuntimeError(f"Error executing hyprctl command: {e}")
-
-
-def getMonitorConfig(name: typing.Optional[str] = None, silent: bool = False) -> typing.Any:
-    """
-    Retrieves the configuration for a monitor with the specified name.
-
-    If silent is False and the monitor is not found, an error is printed.
-    """
-    try:
-        monitor = next((m for m in getMonitors() if m.get('name') == name), None)
-        if monitor is None and not silent:
-            printError(f"Invalid monitor name specified ({name})")
-        return monitor
-    except CalledProcessError as e:
-        raise RuntimeError(f"Error executing hyprctl command: {e}")
-
-
-def getMonitors() -> typing.Any:
-    """
-    Retrieves the list of current monitors and their properties from hyprctl in JSON format.
-    """
-    return json.loads(subprocess.check_output('hyprctl monitors -j', shell=True))
-
-
-def printError(*args, **kwargs):
-    """
-    Helper function to print error messages to stderr.
-    """
-    print(*args, file=sys.stderr, **kwargs)
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description="Hyprland Monitor Configuration Control Utility with HDMI-A-1 integration."
-    )
-
-    # Positional argument for command (enable/disable).
-    parser.add_argument('command', choices=list(Command), type=Command,
-                        help="Action to perform on the monitor (enable or disable)")
-    # Optional positional argument for monitor name.
-    parser.add_argument('monitor', nargs='?',
-                        help="The name of the monitor (e.g., DP-1, HDMI-A-1). "
-                             "Defaults to the focused monitor unless overridden by '--hdmi'.")
-    # New flag to target HDMI-A-1 specifically.
-    parser.add_argument('--hdmi', action='store_true',
-                        help="Target the HDMI-A-1 monitor specifically. "
-                             "Overrides any provided monitor name with 'HDMI-A-1'.")
-    parser.add_argument('--force', '-f', dest='force', action='store_true',
-                        help="Force configuration reload if the monitor is already enabled")
-    parser.add_argument('--defaults', dest='defaults', action='store_true',
-                        help="Use preferred auto configuration if no state file is found")
-
-    args = parser.parse_args()
-
-    # If '--hdmi' is set, force the monitor name to "HDMI-A-1".
-    if args.hdmi:
-        if args.monitor and args.monitor != "HDMI-A-1":
-            printError("Warning: '--hdmi' flag is set. Overriding provided monitor name with 'HDMI-A-1'.")
-        monitor_arg = "HDMI-A-1"
-    else:
-        monitor_arg = args.monitor
-
-    # Call the main function with parsed arguments.
-    main(args.command, monitor_arg, force=args.force, use_defaults=args.defaults)
