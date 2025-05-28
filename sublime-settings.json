@@ -1,0 +1,33 @@
+{
+	"auto_indent": true,
+	"color_scheme": "Packages/gruvbox/gruvbox (Dark) (Hard).sublime-color-scheme",
+	"detect_indentation": true,
+	"font_size": 12,
+	"ignored_packages":
+	[
+		"Vintage"
+	],
+	"match_brackets": true,
+	"smart_indent": true,
+	"spell_check": true,
+	"tab_size": 2,
+	"match_selection": true,
+	"draw_indent_guides": true,
+	// Set to true to ensure the last line of the file ends
+	// in a newline character when saving
+	"ensure_newline_at_eof_on_save": true,
+	"show_definitions": true,
+	"tab_completion": true,
+	"auto_complete": true,
+	"auto_complete_commit_on_tab": true,
+	"auto_complete_with_fields": true,
+	"shift_tab_unindent": true,
+	"highlight_modified_tabs": true,
+	"show_line_endings": true,
+	"shell_environment": true,
+	"show_errors_inline": true,
+	"show_git_status": true,
+	
+	"theme": "gruvbox.sublime-theme"
+}
+
