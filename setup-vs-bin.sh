@@ -33,9 +33,9 @@ TS=$(date +%Y%m%d%H%M%S)
 # Parse arguments
 # -----------------------------------------------------------------------------
 case "${1:-}" in
-  --backup) BACKUP=true ;;
-  -h|--help)
-    cat << 'EOF'
+--backup) BACKUP=true ;;
+-h | --help)
+  cat <<'EOF'
 setup-vscode-arch.sh — Automate Visual Studio Code configuration on Arch Linux
 
 Usage:
@@ -45,11 +45,14 @@ Options:
   --backup    Backup existing VS Code User settings before overwriting.
   -h, --help  Show this help message.
 EOF
-    exit 0
-    ;;
-  "") : ;;  # no args
-  *) echo "Unknown option: $1" >&2; exit 2 ;;
- esac
+  exit 0
+  ;;
+"") : ;; # no args
+*)
+  echo "Unknown option: $1" >&2
+  exit 2
+  ;;
+esac
 
 # -----------------------------------------------------------------------------
 # Backup existing User settings
@@ -79,14 +82,13 @@ else
   echo "'code' CLI already installed."
 fi
 
-
 EXTRA_LANG_EXTENSIONS=(
-  mads-hartmann.bash-ide-vscode     # Bash LSP
-  foxundermoon.shell-format         # Shell formatter
-  ms-python.vscode-pylance          # Python LSP
-  njpwerner.autodocstring           # Python docstrings
-  ms-python.isort                   # Python import sorter
-  jebbs.plantuml                    # UML for Java docs
+  mads-hartmann.bash-ide-vscode # Bash LSP
+  foxundermoon.shell-format     # Shell formatter
+  ms-python.vscode-pylance      # Python LSP
+  njpwerner.autodocstring       # Python docstrings
+  ms-python.isort               # Python import sorter
+  jebbs.plantuml                # UML for Java docs
 )
 
 echo "Installing extra language extensions..."
@@ -94,7 +96,6 @@ for ext in "${EXTRA_LANG_EXTENSIONS[@]}"; do
   code --install-extension "$ext" --force || true
   echo "  • $ext"
 done
-
 
 # -----------------------------------------------------------------------------
 # Install VS Code extensions
@@ -116,7 +117,7 @@ EXTENSIONS=(
   jeff-hykin.better-syntax
   peaceshi.syntax-highlight
   foxundermoon.shell-format
-
+  mkhl.shfmt
 
   # LSP and IntelliSense
   ms-vscode.vscode-typescript-next
@@ -145,7 +146,7 @@ done
 # -----------------------------------------------------------------------------
 # Write User settings.json
 # -----------------------------------------------------------------------------
-cat > "$VSCODE_USER_DIR/settings.json" << 'EOF'
+cat >"$VSCODE_USER_DIR/settings.json" <<'EOF'
 {
   // Theme and Icons
   "workbench.colorTheme": "Dracula",
@@ -202,7 +203,7 @@ EOF
 # -----------------------------------------------------------------------------
 # Write User keybindings.json
 # -----------------------------------------------------------------------------
-cat > "$VSCODE_USER_DIR/keybindings.json" << 'EOF'
+cat >"$VSCODE_USER_DIR/keybindings.json" <<'EOF'
 [
   // Save with Ctrl+S
   { "key": "ctrl+s", "command": "workbench.action.files.save" },
@@ -224,4 +225,3 @@ EOF
 echo "✅ VS Code has been configured!"
 echo "📂 Settings: $VSCODE_USER_DIR"
 echo "🔌 Installed extensions: ${#EXTENSIONS[@]}"
-
