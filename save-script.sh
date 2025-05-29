@@ -1,119 +1,158 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ==============================================================================
 # Script: save_script.sh
-# Description:
-#   This script accepts one or several input file paths (scripts) and copies
-#   each to /usr/local/bin without its original extension.
+# Author:  <your-name>
+# Version: 1.2 – 2025-05-29
+# --------------------------------------------------------------------------
+# PURPOSE
+#   Copy one or more scripts to /usr/local/bin **without the original
+#   extension** (e.g. my_util.sh → /usr/local/bin/my_util).
 #
-#   For example:
-#       ~/path/to/my_script.sh  -->  /usr/local/bin/my_script
+#   Compared with the earlier version this release:
+#     1.  Detects whether a destination file is **identical** (byte-for-byte)
+#         to the incoming source.  Identical duplicates are silently skipped.
+#     2.  If the destination exists **and differs**, all such conflicts are
+#         collected first.  The user is told how many there are and can choose
+#         to:
+#           •  [A]  overwrite all differing duplicates;
+#           •  [R]  review each diff interactively and decide per file;
+#           •  [K]  keep all existing versions (skip all conflicting copies).
+#     3.  When reviewing, the script displays a coloured, side-by-side diff
+#         using the first tool found in this priority order:
+#              git-delta ▸ diff-so-fancy ▸ bat --diff ▸ plain diff -u
 #
-#   If a duplicate (target file already exists) is detected, the user is 
-#   prompted to choose one of three options:
-#       A: Overwrite all duplicates.
-#       D: Decide for each conflict interactively.
-#       K: Keep (skip) conflicting files.
+#   The script reinvokes itself via sudo when run by a non-root user.
 #
-#   This script uses a trick to re-run itself with sudo privileges if not
-#   running as root. (It assumes that /usr/local/bin is writable by root.)
+# USAGE
+#   ./save_script.sh  file1.sh  file2.py  file3.R …
 #
-# Usage:
-#   ./save_script.sh file1.sh file2.py file3.R ...
-#
-# Note:
-#   It is not necessary to call sudo manually since the script
-#   re-invokes itself when needed.
+# EXIT CODES
+#   0  success
+#   1  incorrect invocation (no arguments)
+#   2  copy error (details printed inline)
 # ==============================================================================
+set -euo pipefail
+IFS=$'\n\t'
 
-# Re-run the script with sudo if not running as root.
-#if [ "$(whoami)" != "root" ]; then
-#    sudo su -s "$0" "$@"
-#    exit
-#fi
+###############################################################################
+# CONFIGURATION
+###############################################################################
+DEST_DIR="/usr/local/bin"                  # Change if needed.
+DIFF_TOOL=""                               # Autodetected later.
 
+###############################################################################
+# HELPER FUNCTIONS
+###############################################################################
 
-if [ "$(whoami)" != "root" ]
-then
-    sudo su -s "$0"
-    exit
-fi
-
-
-# Check for at least one input file.
-if [ "$#" -lt 1 ]; then
-    echo "Usage: $0 file1 [file2 ...]"
-    exit 1
-fi
-
-DEST_DIR="/usr/local/bin"
-global_choice=""
-
-# Loop through each input file.
-for src_file in "$@"; do
-    # Check if the source file exists.
-    if [ ! -f "$src_file" ]; then
-        echo "File '$src_file' does not exist. Skipping."
-        continue
+#--- Determine the prettiest diff tool available ------------------------------
+detect_diff_tool() {
+    if command -v delta &>/dev/null;          then DIFF_TOOL="delta"
+    elif command -v diff-so-fancy &>/dev/null;then DIFF_TOOL="diff-so-fancy"
+    elif command -v bat &>/dev/null;          then DIFF_TOOL="bat --diff"
+    else                                           DIFF_TOOL="diff -u"
     fi
+}
 
-    # Get the base filename (e.g., "my_script.sh").
-    filename=$(basename "$src_file")
-    # Remove the extension (if any) so that "script.sh" becomes "script"
-    dest_basename="${filename%.*}"
-    dest_path="${DEST_DIR}/${dest_basename}"
+#--- Show a coloured diff between two files -----------------------------------
+show_diff() {
+    local old="$1" new="$2"
+    case "$DIFF_TOOL" in
+        delta)            delta    "$old" "$new" ;;
+        diff-so-fancy)    git diff --no-index --color "$old" "$new" | diff-so-fancy ;;
+        "bat --diff")     bat --diff "$old" "$new" ;;
+        *)                diff -u "$old" "$new" ;;
+    esac
+}
 
-    # Check if the destination file already exists.
-    if [ -e "$dest_path" ]; then
-        if [ "$global_choice" = "overwrite" ]; then
-            echo "Overwriting existing file: $dest_path"
-            cp "$src_file" "$dest_path"
-        elif [ "$global_choice" = "keep" ]; then
-            echo "Skipping (keeping existing): $dest_path"
-        elif [ "$global_choice" = "decide" ]; then
-            read -p "File '$dest_path' exists. Overwrite? (y/N): " ans
-            if [[ "$ans" =~ ^[Yy]$ ]]; then
-                cp "$src_file" "$dest_path"
-                echo "Overwritten: $dest_path"
-            else
-                echo "Skipped: $dest_path"
-            fi
-        else
-            # No global decision set; ask the user for how to handle duplicates.
-            echo "Conflict: File '$dest_path' already exists."
-            echo "Choose an option:"
-            echo "  [A] Overwrite all duplicates"
-            echo "  [D] Decide for each duplicate"
-            echo "  [K] Keep all existing files (skip duplicates)"
-            read -p "Enter A, D, or K: " choice
-            case "$choice" in
-                [Aa])
-                    global_choice="overwrite"
-                    cp "$src_file" "$dest_path"
-                    echo "Overwritten: $dest_path"
-                    ;;
-                [Kk])
-                    global_choice="keep"
-                    echo "Skipping: $dest_path"
-                    ;;
-                [Dd])
-                    global_choice="decide"
-                    read -p "Overwrite '$dest_path'? (y/N): " ans
-                    if [[ "$ans" =~ ^[Yy]$ ]]; then
-                        cp "$src_file" "$dest_path"
-                        echo "Overwritten: $dest_path"
-                    else
-                        echo "Skipped: $dest_path"
-                    fi
-                    ;;
-                *)
-                    echo "Invalid option. Skipping '$dest_path'."
-                    ;;
-            esac
+#--- Ensure we are running with root privileges -------------------------------
+ensure_root() {
+    if [[ "$(id -u)" -ne 0 ]]; then
+        exec sudo --preserve-env=PATH "$0" "$@"
+    fi
+}
+
+#--- Copy one file, overwriting destination -----------------------------------
+copy_file() {
+    local src="$1" dest="$2"
+    cp --preserve=mode,timestamps "$src" "$dest"
+    echo "✔ Copied  $(basename "$src") → ${dest}"
+}
+
+###############################################################################
+# MAIN LOGIC
+###############################################################################
+main() {
+    #---------------------------------- preliminaries --------------------------
+    ensure_root "$@"
+    detect_diff_tool
+
+    [[ $# -ge 1 ]] || { echo "Usage: $0 file1 [file2 …]" >&2; exit 1; }
+
+    #---------------------------------- pass 1: classify -----------------------
+    declare -a to_copy                # files whose dest does not yet exist
+    declare -a identical=()           # (“src|dest”) pairs, content identical
+    declare -a differing=()           # (“src|dest”) pairs, content differs
+
+    for src in "$@"; do
+        if [[ ! -f "$src" ]]; then
+            echo "⚠ File '$src' does not exist – skipped."
+            continue
         fi
-    else
-        # No conflict; copy the file.
-        cp "$src_file" "$dest_path"
-        echo "Copied '$src_file' to '$dest_path'"
+
+        base="$(basename "${src%.*}")"
+        dest="${DEST_DIR}/${base}"
+
+        if [[ ! -e "$dest" ]]; then
+            to_copy+=("$src|$dest")
+        elif cmp -s "$src" "$dest"; then
+            identical+=("$src|$dest")
+        else
+            differing+=("$src|$dest")
+        fi
+    done
+
+    #---------------------------------- summary --------------------------------
+    [[ ${#identical[@]} -gt 0 ]] &&
+        printf "ℹ  %d identical duplicate(s) skipped automatically.\n" "${#identical[@]}"
+
+    #---------------------------------- resolve differing duplicates -----------
+    if [[ ${#differing[@]} -gt 0 ]]; then
+        printf "\n⚠  %d duplicate file(s) with different content detected.\n" "${#differing[@]}"
+        printf "   Choose an action:\n"
+        printf "     [A] Overwrite all   [R] Review each   [K] Keep all → "
+        read -r action
+        action=${action:-K}
+        case "${action^^}" in
+            A)  for pair in "${differing[@]}"; do
+                    IFS="|" read -r src dest <<< "$pair"
+                    copy_file "$src" "$dest"
+                done
+                ;;
+            R)  for pair in "${differing[@]}"; do
+                    IFS="|" read -r src dest <<< "$pair"
+                    printf "\n----- %s ↔ %s -----\n" "$src" "$dest"
+                    show_diff "$dest" "$src"
+                    printf "Overwrite? [y/N] "
+                    read -r ans
+                    if [[ "$ans" =~ ^[Yy]$ ]]; then
+                        copy_file "$src" "$dest"
+                    else
+                        echo "✘ Kept    $(basename "$dest")"
+                    fi
+                done
+                ;;
+            K)  echo "✓ All differing duplicates kept."
+                ;;
+            *)  echo "Invalid choice – nothing changed." ;;
+        esac
     fi
-done
+
+    #---------------------------------- copy new files -------------------------
+    for pair in "${to_copy[@]}"; do
+        IFS="|" read -r src dest <<< "$pair"
+        copy_file "$src" "$dest"
+    done
+}
+
+main "$@"
 
