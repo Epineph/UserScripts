@@ -140,7 +140,7 @@ fi
 perform_refresh() {
   echo "Performing system refresh and configuration..."
   # Define preferred mirror countries
-  local countries=( Denmark Germany France Netherlands Sweden Norway Finland Austria Belgium Switzerland "United Kingdom" Russia Ukraine )
+  local countries=(Denmark Germany France Netherlands Sweden Norway Finland Austria Belgium Switzerland United Kingdom Russia Ukraine )
   local countries_list
   countries_list=$(IFS=,; echo "${countries[*]}")
 
