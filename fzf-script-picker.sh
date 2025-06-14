@@ -6,6 +6,11 @@
 #  • Preview window shows full file with Bash syntax highlighting.
 #  • Defaults: scan /usr/local/bin, recurse 3 levels, insert the name.
 #  • --exec: run the chosen script (full path) with any extra args.
+#
+#  Modifications:
+#   - Detects whichever `bat` is in $PATH (e.g. ~/.cargo/bin/bat)
+#   - Uses --color=always + --force-colorization instead of stripping ANSI
+#   - Calls fzf with --ansi so colours pass through to the preview pane
 ###############################################################################
 set -Eeuo pipefail
 
@@ -22,15 +27,37 @@ WRAP="wrap"
 
 ##### 2) BAT VS CAT FOR HELP & PREVIEW #########################################
 if command -v bat &>/dev/null; then
-  BAT_PRINT=(bat --style="grid,header,snip" \
-                 --strip-ansi=always --squeeze-blank \
-                 --pager="less -R" --paging=never \
-                 --tabs=2 --wrap=auto \
-                 --italic-text=always --theme="$THEME")
-  # ← Here we add --language=bash so every preview is highlighted as shell
-  BAT_PREVIEW=(bat --language=bash --style="grid,header,snip" \
-                   --strip-ansi=always --paging=never \
-                   --terminal-width=-1 --theme="$THEME")
+  # pick up your cargo- or system-installed bat
+  BAT_CMD="$(command -v bat)"
+
+  # for printing help text
+  BAT_PRINT=(
+    "$BAT_CMD"
+    --style="grid,header,snip"
+    --strip-ansi=always
+    --squeeze-blank
+    --pager="less -R"
+    --paging=never
+    --tabs=2
+    --wrap=auto
+    --italic-text=always
+    --theme="$THEME"
+  )
+
+  # for preview: force colour output
+  BAT_PREVIEW=(
+    "$BAT_CMD"
+    --language=bash
+    --style="grid,header,snip"
+    --color=always
+    --force-colorization
+    --paging=never
+    --terminal-width=-1
+    --tabs=2
+    --wrap=auto
+    --italic-text=always
+    --theme="$THEME"
+  )
 else
   BAT_PRINT=(cat)
   BAT_PREVIEW=(cat)
@@ -79,7 +106,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# default to /usr/local/bin
+# Defaults
 (( ${#TARGETS[@]} == 0 )) && TARGETS=("$DEFAULT_TARGET")
 [[ $ACTION =~ ^(insert|print|exec)$ ]] || { echo "Invalid --action"; exit 1; }
 command -v fzf >/dev/null 2>&1 || { echo "fzf is required"; exit 1; }
@@ -87,9 +114,13 @@ command -v fzf >/dev/null 2>&1 || { echo "fzf is required"; exit 1; }
 ##### 5) COLLECT EXECUTABLE FILES #############################################
 have() { command -v "$1" &>/dev/null; }
 
+# build extension filter
 EXT_FILTER=()
-[[ -n $EXTENSIONS ]] && for e in $EXTENSIONS; do EXT_FILTER+=( -e "$e" ); done
+[[ -n $EXTENSIONS ]] && for e in $EXTENSIONS; do
+  EXT_FILTER+=( -e "$e" )
+done
 
+# depth flags for fd / find
 DEPFLAGS=()
 [[ $RECURSIVE != true ]] && DEPFLAGS=( --max-depth "$MAX_DEPTH" )
 
@@ -104,7 +135,7 @@ collect_files() {
   fi
 }
 
-# Build "<basename><TAB><fullpath>" lines and filter executables
+# produce "name<TAB>fullpath" for all executables
 mapfile -t RAW_LIST < <(
   for d in "${TARGETS[@]}"; do
     [[ -d $d ]] || { echo "⚠ '$d' not a directory; skipping." >&2; continue; }
@@ -116,13 +147,16 @@ mapfile -t RAW_LIST < <(
 (( ${#RAW_LIST[@]} )) || { echo "No executable scripts found."; exit 1; }
 
 ##### 6) FUZZY-SELECT #########################################################
-SELECTED_LINE=$(printf '%s\n' "${RAW_LIST[@]}" \
-  | fzf --prompt="Scripts> " \
-        --header="Choose script → $ACTION" \
-        --delimiter=$'\t' \
-        --with-nth=1 \
-        --preview="cut -f2 <<< {} | xargs -d'\n' ${BAT_PREVIEW[*]} --" \
-        --preview-window=right:60%:$WRAP)
+SELECTED_LINE=$(
+  printf '%s\n' "${RAW_LIST[@]}" | \
+  fzf --ansi \
+      --prompt="Scripts> " \
+      --header="Choose script → $ACTION" \
+      --delimiter=$'\t' \
+      --with-nth=1 \
+      --preview="cut -f2 <<< {} | xargs -d'\n' ${BAT_PREVIEW[*]} --" \
+      --preview-window=right:60%:$WRAP
+)
 
 [[ -z $SELECTED_LINE ]] && exit 1
 
@@ -132,9 +166,11 @@ SCRIPT_PATH=${SELECTED_LINE#*$'\t'}
 ##### 7) POST-SELECTION ######################################################
 case $ACTION in
   exec)
-    exec "$SCRIPT_PATH" $EXTRA_ARGS ;;
+    exec "$SCRIPT_PATH" $EXTRA_ARGS
+    ;;
   print|insert)
-    # both modes simply emit the name; your shell widget can insert it
-    printf '%s\n' "$SCRIPT_NAME" ;;
+    # emit only the name; your ZLE widget will insert it for you
+    printf '%s\n' "$SCRIPT_NAME"
+    ;;
 esac
 
