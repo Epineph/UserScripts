@@ -1,190 +1,200 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  build_repo — Non-interactive project builder & installer (with ionice & Ninja)
-#
-#  Behaviour:
-#    • Use -D/--directory to set project path (defaults to $PWD).
-#    • Use -n/--ninja to force Ninja generator (if installed).
-#    • Detects CMake projects, Autotools, Make, Cargo, Python, Node, Go, Perl.
-#    • Applies ionice (best-effort, highest priority) if available to speed I/O.
-#    • Builds with all CPU cores and installs to $HOME/bin.
-#    • Exits non-zero on failure.
-#
-#  Usage:
-#      build_repo [ -D <path> ] [ -n | --ninja ] [ -h | --help ]
-#
-#  Author: <your name> — <date>
+#  build_repo — non-interactive builder & installer (with Ninja & ionice)
 # =============================================================================
 
-set -euo pipefail    # strict-mode Bash
+set -euo pipefail
 IFS=$'\n\t'
 
-# -------------- Configuration Defaults --------------------------------------
+# -----------------------------------------------------------------------------
+#  Defaults
+# -----------------------------------------------------------------------------
 INSTALL_PREFIX="$HOME/bin"
 VCPKG_TOOLCHAIN="$HOME/repos/vcpkg/scripts/buildsystems/vcpkg.cmake"
 BUILD_DIR="build"
 
-#  Detect and configure ionice (best-effort, highest-priority I/O)
+# -----------------------------------------------------------------------------
+#  Detect ionice and store for correct splitting
+# -----------------------------------------------------------------------------
 if command -v ionice &>/dev/null; then
-  IONICE_CMD="ionice -c2 -n0"
+  IONICE_CMD=(ionice -c2 -n0)
 else
-  IONICE_CMD=""
+  IONICE_CMD=()
 fi
 
-# -------------- Help & Usage ------------------------------------------------
+# -----------------------------------------------------------------------------
+#  run_cmd: prefix with ionice if present
+# -----------------------------------------------------------------------------
+run_cmd() {
+  "${IONICE_CMD[@]}" "$@"
+}
+
+# -----------------------------------------------------------------------------
+#  Help text
+# -----------------------------------------------------------------------------
 show_help() {
   cat <<EOF
-build_repo — non-interactive build helper
+build_repo — build & install helper
+
+Usage:
+  build_repo [ -D <path> ] [ -n | --ninja ] [ -h | --help ]
 
 Options:
-  -D, --directory <path>   Build the project located at <path>.
-  -n, --ninja              Use Ninja generator (falls back to Unix Makefiles).
-  -h, --help               Show this help message.
+  -D, --directory <path>   Project directory (default: \$PWD)
+  -n, --ninja              Force CMake Ninja generator
+  -h, --help               Show this message
 EOF
 }
 
-# -------- Argument parsing: -D, -n/--ninja, -h/--help ------------------------
+# -----------------------------------------------------------------------------
+#  Parse arguments
+# -----------------------------------------------------------------------------
 project_path=""
 USE_NINJA=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -D|--directory)
-      project_path="$2"
-      shift 2
-      ;;
-    -n|--ninja)
-      USE_NINJA=true
-      shift
-      ;;
-    -h|--help)
-      show_help
-      exit 0
-      ;;
-    *)
-      echo "Error: unknown option '$1'" >&2
-      show_help
-      exit 1
-      ;;
+  -D | --directory)
+    project_path="$2"
+    shift 2
+    ;;
+  -n | --ninja)
+    USE_NINJA=true
+    shift
+    ;;
+  -h | --help)
+    show_help
+    exit 0
+    ;;
+  *)
+    echo "Error: unknown option '$1'" >&2
+    show_help
+    exit 1
+    ;;
   esac
 done
 
-# Default to current directory if none supplied
 project_path="${project_path:-$(pwd)}"
-cd "$project_path" || {
-  echo "Error: cannot cd into '$project_path'" >&2
-  exit 1
-}
+cd "$project_path"
 
-# Ensure install prefix exists
 mkdir -p "$INSTALL_PREFIX"
 
-# -------- Build logic -------------------------------------------------------
+# -----------------------------------------------------------------------------
+#  Build logic
+# -----------------------------------------------------------------------------
 build_project() {
-  # CMake-based projects
+  # --- CMake projects ---
   if [[ -f CMakeLists.txt ]]; then
-    # Choose generator: Ninja if requested & installed, else Makefiles
+    # if forcing Ninja, wipe old build dir so CMake reconfigures
+    if $USE_NINJA && [[ -d "$BUILD_DIR" ]]; then
+      echo "==> -n passed: clearing '$BUILD_DIR' to reconfigure with Ninja"
+      rm -rf "$BUILD_DIR"
+    fi
+
+    mkdir -p "$BUILD_DIR"
+    cd "$BUILD_DIR"
+
+    # pick the generator
     if $USE_NINJA && command -v ninja &>/dev/null; then
       GENERATOR="Ninja"
     else
       GENERATOR="Unix Makefiles"
     fi
 
-    mkdir -p "$BUILD_DIR"
-    cd "$BUILD_DIR"
+    # configure
+    run_cmd cmake -G "$GENERATOR" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
+      -DCMAKE_TOOLCHAIN_FILE="$VCPKG_TOOLCHAIN" \
+      ..
 
-    # Configure (only once)
-    if [[ ! -f CMakeCache.txt ]]; then
-      $IONICE_CMD cmake -G "$GENERATOR" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
-        -DCMAKE_TOOLCHAIN_FILE="$VCPKG_TOOLCHAIN" \
-        ..
+    # build & install
+    if [[ "$GENERATOR" == "Ninja" ]]; then
+      run_cmd ninja -j"$(nproc)"
+      run_cmd ninja install
+    else
+      run_cmd cmake --build . --parallel "$(nproc)"
+      run_cmd cmake --build . --target install --parallel
     fi
 
-    # Build (parallel across all cores)
-    $IONICE_CMD cmake --build . --parallel "$(nproc)"
-
-    # Install
-    $IONICE_CMD cmake --build . --target install --parallel
     return
   fi
 
-  # Autotools
+  # --- Autotools ---
   if [[ -f configure ]]; then
-    $IONICE_CMD ./configure --prefix="$INSTALL_PREFIX"
-    $IONICE_CMD make -j"$(nproc)"
-    $IONICE_CMD make install
+    run_cmd ./configure --prefix="$INSTALL_PREFIX"
+    run_cmd make -j"$(nproc)"
+    run_cmd make install
     return
   fi
 
-  # Simple Makefile
+  # --- Simple Makefile ---
   if [[ -f Makefile ]]; then
-    $IONICE_CMD make -j"$(nproc)"
-    $IONICE_CMD make install
+    run_cmd make -j"$(nproc)"
+    run_cmd make install
     return
   fi
 
-  # Cargo (Rust)
+  # --- Rust / Cargo ---
   if [[ -f Cargo.toml ]]; then
-    $IONICE_CMD cargo install --path . --root "$INSTALL_PREFIX"
+    run_cmd cargo install --path . --root "$INSTALL_PREFIX"
     return
   fi
 
-  # Python setup.py
+  # --- Python setup.py ---
   if [[ -f setup.py ]]; then
-    python setup.py build
-    python setup.py install --prefix="$INSTALL_PREFIX"
+    run_cmd python setup.py build
+    run_cmd python setup.py install --prefix="$INSTALL_PREFIX"
     return
   fi
 
-  # PEP 517/518 projects
+  # --- PEP 517/518 (pyproject.toml) ---
   if [[ -f pyproject.toml ]]; then
     if [[ -f hatch.toml ]]; then
-      python -m pip install --quiet hatch
-      hatch build -t wheel
-      python -m pip install --prefix="$INSTALL_PREFIX" dist/*.whl
+      run_cmd python -m pip install --quiet hatch
+      run_cmd hatch build -t wheel
+      run_cmd python -m pip install --prefix="$INSTALL_PREFIX" dist/*.whl
     else
-      python -m pip install --prefix="$INSTALL_PREFIX" -e .
+      run_cmd python -m pip install --prefix="$INSTALL_PREFIX" -e .
     fi
     return
   fi
 
-  # Node.js
+  # --- Node.js ---
   if [[ -f package.json ]]; then
     if command -v yarn &>/dev/null; then
-      $IONICE_CMD yarn install --silent
-      $IONICE_CMD yarn build
-      $IONICE_CMD yarn global add . --prefix "$INSTALL_PREFIX"
+      run_cmd yarn install --silent
+      run_cmd yarn build
+      run_cmd yarn global add . --prefix "$INSTALL_PREFIX"
     else
-      $IONICE_CMD npm install --silent
-      $IONICE_CMD npm run build --silent
-      $IONICE_CMD npm install -g . --prefix "$INSTALL_PREFIX" --silent
+      run_cmd npm install --silent
+      run_cmd npm run build --silent
+      run_cmd npm install -g . --prefix "$INSTALL_PREFIX" --silent
     fi
     return
   fi
 
-  # Go modules
+  # --- Go ---
   if [[ -f go.mod ]]; then
-    $IONICE_CMD go install ./... --prefix "$INSTALL_PREFIX"
+    run_cmd go install ./... --prefix "$INSTALL_PREFIX"
     return
   fi
 
-  # Perl Makefile.PL
+  # --- Perl ---
   if [[ -f Makefile.PL ]]; then
-    $IONICE_CMD perl Makefile.PL PREFIX="$INSTALL_PREFIX"
-    $IONICE_CMD make
-    $IONICE_CMD make install
+    run_cmd perl Makefile.PL PREFIX="$INSTALL_PREFIX"
+    run_cmd make
+    run_cmd make install
     return
   fi
 
-  # No recognized build system
-  echo "Error: no recognised build system in '$project_path'." >&2
+  echo "Error: no recognized build system in '$project_path'." >&2
   exit 1
 }
 
-# ------------------------ Execute -------------------------------------------
+# -----------------------------------------------------------------------------
+#  Run it
+# -----------------------------------------------------------------------------
 echo "==> Building and installing project in '$project_path' ..."
 build_project
-echo "==> Done — artefacts installed to '$INSTALL_PREFIX'."
-
+echo "==> Done — artefacts in '$INSTALL_PREFIX'."
