@@ -75,105 +75,105 @@ END_LINE=""
 # markers "################################################################################".
 #--------------------------------------------------
 show_help() {
-    awk 'NR<4 { next } /^################################################################################$/ { exit } { print }' "$0"
+  awk 'NR<4 { next } /^################################################################################$/ { exit } { print }' "$0"
 }
 
 #--------------------------------------------------
 # Parse command‐line arguments
 #--------------------------------------------------
-while (( $# )); do
-    case "$1" in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        -i|--input-script)
-            shift
-            if [[ $# -eq 0 ]]; then
-                echo "Error: Missing argument for $1" >&2
-                exit 1
-            fi
-            INPUT_SCRIPT="$1"
-            shift
-            ;;
-        -m|--md-file)
-            shift
-            if [[ $# -eq 0 ]]; then
-                echo "Error: Missing argument for $1" >&2
-                exit 1
-            fi
-            MD_FILE="$1"
-            shift
-            ;;
-        -s|--start-line)
-            shift
-            if [[ $# -eq 0 ]]; then
-                echo "Error: Missing argument for $1" >&2
-                exit 1
-            fi
-            START_LINE="$1"
-            shift
-            ;;
-        -e|--end-line)
-            shift
-            if [[ $# -eq 0 ]]; then
-                echo "Error: Missing argument for $1" >&2
-                exit 1
-            fi
-            END_LINE="$1"
-            shift
-            ;;
-        -k|--marker)
-            shift
-            if [[ $# -eq 0 ]]; then
-                echo "Error: Missing argument for $1" >&2
-                exit 1
-            fi
-            MARKER="$1"
-            shift
-            ;;
-        -*)
-            echo "Error: Unknown option: $1" >&2
-            exit 1
-            ;;
-        *)
-            echo "Error: Unexpected positional argument: $1" >&2
-            exit 1
-            ;;
-    esac
+while (($#)); do
+  case "$1" in
+  -h | --help)
+    show_help
+    exit 0
+    ;;
+  -i | --input-script)
+    shift
+    if [[ $# -eq 0 ]]; then
+      echo "Error: Missing argument for $1" >&2
+      exit 1
+    fi
+    INPUT_SCRIPT="$1"
+    shift
+    ;;
+  -m | --md-file)
+    shift
+    if [[ $# -eq 0 ]]; then
+      echo "Error: Missing argument for $1" >&2
+      exit 1
+    fi
+    MD_FILE="$1"
+    shift
+    ;;
+  -s | --start-line)
+    shift
+    if [[ $# -eq 0 ]]; then
+      echo "Error: Missing argument for $1" >&2
+      exit 1
+    fi
+    START_LINE="$1"
+    shift
+    ;;
+  -e | --end-line)
+    shift
+    if [[ $# -eq 0 ]]; then
+      echo "Error: Missing argument for $1" >&2
+      exit 1
+    fi
+    END_LINE="$1"
+    shift
+    ;;
+  -k | --marker)
+    shift
+    if [[ $# -eq 0 ]]; then
+      echo "Error: Missing argument for $1" >&2
+      exit 1
+    fi
+    MARKER="$1"
+    shift
+    ;;
+  -*)
+    echo "Error: Unknown option: $1" >&2
+    exit 1
+    ;;
+  *)
+    echo "Error: Unexpected positional argument: $1" >&2
+    exit 1
+    ;;
+  esac
 done
 
 #--------------------------------------------------
 # Validate required arguments
 #--------------------------------------------------
 if [[ -z "$INPUT_SCRIPT" || -z "$MD_FILE" || -z "$START_LINE" || -z "$END_LINE" ]]; then
-    echo "Error: -i, -m, -s, and -e are all required." >&2
-    echo "Run '$0 --help' for usage." >&2
-    exit 1
+  echo "Error: -i, -m, -s, and -e are all required." >&2
+  echo "Run '$0 --help' for usage." >&2
+  exit 1
 fi
 
 # Ensure numbers are integers
 if ! [[ "$START_LINE" =~ ^[0-9]+$ ]]; then
-    echo "Error: start-line must be a positive integer." >&2
-    exit 1
+  echo "Error: start-line must be a positive integer." >&2
+  exit 1
 fi
 if ! [[ "$END_LINE" =~ ^[0-9]+$ ]]; then
-    echo "Error: end-line must be a positive integer." >&2
-    exit 1
+  echo "Error: end-line must be a positive integer." >&2
+  exit 1
 fi
-if (( START_LINE > END_LINE )); then
-    echo "Error: start-line ($START_LINE) cannot exceed end-line ($END_LINE)." >&2
-    exit 1
+if ((START_LINE > END_LINE)); then
+  echo "Error: start-line ($START_LINE) cannot exceed end-line ($END_LINE)." >&2
+  exit 1
 fi
 
 # Check that files exist
 if [[ ! -f "$INPUT_SCRIPT" ]]; then
-    echo "Error: Input script '$INPUT_SCRIPT' does not exist or is not a regular file." >&2
-    exit 1
+  echo "Error: Input script '$INPUT_SCRIPT' does not exist or is not a regular file." >&2
+  exit 1
 fi
 if [[ ! -f "$MD_FILE" ]]; then
-    echo "Error: Markdown file '$MD_FILE' does not exist or is not a regular file." >&2
-    exit 1
+  echo "Error: Markdown file '$MD_FILE' does not exist or is not a regular file." >&2
+  exit 1
 fi
 
 #--------------------------------------------------
@@ -182,11 +182,11 @@ fi
 MARKER_COUNT
 MARKER_COUNT=$(grep -Fxc "$MARKER" "$MD_FILE" || echo "0")
 if [[ "$MARKER_COUNT" -eq 0 ]]; then
-    echo "Error: Marker '$MARKER' not found in '$MD_FILE'." >&2
-    exit 1
+  echo "Error: Marker '$MARKER' not found in '$MD_FILE'." >&2
+  exit 1
 elif [[ "$MARKER_COUNT" -gt 1 ]]; then
-    echo "Error: Marker '$MARKER' appears more than once in '$MD_FILE' ($MARKER_COUNT times)." >&2
-    exit 1
+  echo "Error: Marker '$MARKER' appears more than once in '$MD_FILE' ($MARKER_COUNT times)." >&2
+  exit 1
 fi
 
 #--------------------------------------------------
@@ -194,16 +194,16 @@ fi
 #--------------------------------------------------
 TMP_SNIPPET="$(mktemp embed_snippet_XXXXXX.txt)"
 # sed -n 'START,ENDp' prints only that range
-sed -n "${START_LINE},${END_LINE}p" "$INPUT_SCRIPT" > "$TMP_SNIPPET"
+sed -n "${START_LINE},${END_LINE}p" "$INPUT_SCRIPT" >"$TMP_SNIPPET"
 
 #--------------------------------------------------
 # Prepare the fenced snippet text
 #--------------------------------------------------
 {
-    echo '```bash'
-    cat "$TMP_SNIPPET"
-    echo '```'
-} > "${TMP_SNIPPET}.fenced"
+  echo '```bash'
+  cat "$TMP_SNIPPET"
+  echo '```'
+} >"${TMP_SNIPPET}.fenced"
 
 #--------------------------------------------------
 # Replace the marker line in the Markdown file with the fenced snippet
@@ -232,7 +232,7 @@ awk -v marker="$MARKER" -v snippet_file="${TMP_SNIPPET}.fenced" '
             print $0
         }
     }
-' "$MD_FILE" > "${MD_FILE}.tmp"
+' "$MD_FILE" >"${MD_FILE}.tmp"
 
 # Overwrite the original Markdown with the new content
 mv "${MD_FILE}.tmp" "$MD_FILE"
@@ -243,4 +243,3 @@ rm -f "$TMP_SNIPPET" "${TMP_SNIPPET}.fenced"
 echo "Successfully embedded lines $START_LINE–$END_LINE of '$INPUT_SCRIPT' into '$MD_FILE'."
 echo "A backup was saved as '${MD_FILE}.bak'."
 exit 0
-
