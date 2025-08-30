@@ -291,10 +291,9 @@ function Git-PullAll {
     Update all git repositories in the current working directory.
 
 .DESCRIPTION
-    Iterates through each subdirectory of the current location. 
+    Iterates through each subdirectory of the current location.
     If the subdirectory contains a `.git` folder, it:
       - Stashes changes
-      - Checks out the current branch
       - Pulls latest changes
       - Marks the directory as safe in global git config
     Returns to the original working directory after each update.
@@ -314,20 +313,22 @@ function Git-PullAll {
 
             try {
                 git stash push -u
-                git checkout  # equivalent to bare `git checkout` in bash
                 git pull
                 git config --global --add safe.directory $repoDir
-            } catch {
-                Write-Warning "Failed updating $repoDir: $_"
+            }
+            catch {
+                Write-Warning ("Failed updating {0}: {1}" -f $repoDir, $_.Exception.Message)
             }
 
             Set-Location $currentDir
-        } else {
+        }
+        else {
             Write-Host "$repoDir is not a git repository." -ForegroundColor DarkGray
         }
     }
 }
 Set-Alias -Name gpa -Value Git-PullAll
+
 
 function Invoke-PackageManagers {
 <#
