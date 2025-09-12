@@ -8,11 +8,8 @@ date: "2025-09-12"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+# R User-Function to install and load missing packages
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r}
 
@@ -279,7 +276,9 @@ smart_install <- function(pkgs,
 }
 ```
 
-# 1) Minimal CRAN usage (defaults: dependencies = TRUE, load after install)
+# Usage examples
+
+## 1) Minimal CRAN usage (defaults: dependencies = TRUE, load after install)
 
 ```{r}
 # Basic: install+load from CRAN, idempotent if already present.
@@ -288,7 +287,7 @@ str(res1, max.level = 1)
 
 ```
 
-# 2) Mixed sources: CRAN + GitHub (via remotes) with explicit dependency set
+## 2) Mixed sources: CRAN + GitHub (via remotes) with explicit dependency set
 
 ```{r}
 # Mix CRAN and GitHub, install GitHub via 'remotes', and include Suggests.
@@ -316,7 +315,7 @@ list(
 
 ```
 
-# 3) Bioconductor package(s)
+## 3) Bioconductor package(s)
 
 ```{r}
 # Only triggers BiocManager when 'bioc:' prefix is used.
@@ -325,7 +324,7 @@ res3$installed_new
 
 ```
 
-# 4) Prefer GitHub build when both CRAN and GitHub are viable
+## 4) Prefer GitHub build when both CRAN and GitHub are viable
 ```{r}
 # If a package exists on CRAN *and* GitHub, force GitHub build preference.
 res4 <- smart_install(
@@ -337,7 +336,7 @@ res4$installed_new
 
 ```
 
-# 5) No-load mode, then attach selectively
+## 5) No-load mode, then attach selectively
 
 ```{r}
 # Install without attaching; later attach a strict subset.
@@ -355,7 +354,7 @@ if (requireNamespace("rlang", quietly = TRUE)) {
 
 ```
 
-# 6) Handling typos or unavailable packages without halting
+## 6) Handling typos or unavailable packages without halting
 
 ```{r}
 # Intentionally include a typo to demonstrate non-fatal behavior.
@@ -366,7 +365,7 @@ res6$failed_load        # installed but couldn't be loaded
 
 ```
 
-# 7) Reproducible installs with pinned refs and controlled verbosity
+## 7) Reproducible installs with pinned refs and controlled verbosity
 
 ```{r}
 # Quieter installs inside Rmd; pin refs to stabilize results.
