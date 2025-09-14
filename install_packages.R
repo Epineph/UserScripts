@@ -1,40 +1,3 @@
-#!/usr/bin/env Rscript
-##
-## smart-install.R — Deterministic package bootstrapper with CRAN/GitHub/Bioc
-##
-## - CRAN by default using install.packages()
-## - GitHub via remotes::install_github() (default) or devtools::install_github()
-## - Optional Bioconductor via BiocManager::install()
-## - Dependencies: TRUE by default (supports FALSE, NA, or character vector like c("Depends","Suggests"))
-## - Loads packages after install; never halts on errors; prints a summary of failures/typos
-##
-## Design goals:
-##   1) Idempotent: only installs when necessary
-##   2) Predictable: explicit source parsing; no implicit magic beyond well-documented rules
-##   3) Quiet: redirects non-critical noise, but surfaces actionable failures
-##   4) Composable: returns a structured list for programmatic use
-##
-## Accepted package spec formats (character vector):
-##   - "ggplot2"                    -> CRAN
-##   - "cran:ggplot2"               -> CRAN
-##   - "github:r-lib/usethis"       -> GitHub (branch/tag/sha allowed: r-lib/usethis@v3.0.0)
-##   - "gh:tidyverse/dplyr"         -> GitHub
-##   - "r-lib/usethis"              -> GitHub (heuristic: owner/repo with slash and no "cran:" prefix)
-##   - "bioc:DESeq2"                -> Bioconductor (optional)
-##
-## Examples (function):
-##   smart_install(c("data.table", "gh:r-lib/usethis", "r-lib/pkgcache", "bioc:BiocGenerics"),
-##                 dependencies = TRUE, install_github_via = "remotes")
-##
-## Examples (CLI):
-##   Rscript smart-install.R --packages="data.table,gh:r-lib/usethis,r-lib/pkgcache" --dependencies=TRUE
-##   Rscript smart-install.R --packages-file=/path/pkgs.txt --deps="Suggests"
-##   Rscript smart-install.R --packages="bioc:DESeq2,cran:ggplot2" --github=devtools
-##
-## Help:
-##   Rscript smart-install.R --help
-##
-
 # ---------- Utilities ----------
 
 #' Is package installed (by name)?
@@ -60,11 +23,15 @@ run_quietly <- function(expr) {
   zz_msg <- file(nullfile, open = "wt")
   sink(zz_out)
   sink(zz_msg, type = "message")
-  on.exit({
-    try(sink(), silent = TRUE)
-    try(sink(type = "message"), silent = TRUE)
-    close(zz_out); close(zz_msg)
-  }, add = TRUE)
+  on.exit(
+    {
+      try(sink(), silent = TRUE)
+      try(sink(type = "message"), silent = TRUE)
+      close(zz_out)
+      close(zz_msg)
+    },
+    add = TRUE
+  )
   force(expr)
 }
 
@@ -72,12 +39,18 @@ run_quietly <- function(expr) {
 safe_library <- function(pkg) {
   ok <- FALSE
   err <- NULL
-  res <- tryCatch({
-    suppressPackageStartupMessages(suppressWarnings(
-      library(pkg, character.only = TRUE, quietly = TRUE)
-    ))
-    TRUE
-  }, error = function(e) { err <<- e; FALSE })
+  res <- tryCatch(
+    {
+      suppressPackageStartupMessages(suppressWarnings(
+        library(pkg, character.only = TRUE, quietly = TRUE)
+      ))
+      TRUE
+    },
+    error = function(e) {
+      err <<- e
+      FALSE
+    }
+  )
   list(ok = res, error = err)
 }
 
@@ -100,6 +73,29 @@ parse_one_spec <- function(x) {
   stopifnot(is.character(x), length(x) == 1L)
   x <- trimws(x)
 
+  if (grepl("^pak:", x, ignore.case = TRUE)) {
+    inner <- sub("^pak:", "", x, ignore.case = TRUE)
+    sp <- parse_one_spec(inner)
+    sp$via <- "pak"
+    return(sp)
+  }
+  # pak-style explicit forms:
+  #   github::owner/repo[@ref]
+  #   bioc::Package
+  if (grepl("^github::", x, ignore.case = TRUE)) {
+    repo_spec <- sub("^github::", "", x, ignore.case = TRUE)
+    parts <- strsplit(repo_spec, "@", fixed = TRUE)[[1]]
+    repo <- parts[1]
+    ref <- if (length(parts) > 1) parts[2] else NULL
+    pkg <- basename(repo)
+    return(list(source = "github", pkg = pkg, repo = repo, ref = ref, via = "pak"))
+  }
+
+  if (grepl("^bioc::", x, ignore.case = TRUE)) {
+    pkg <- sub("^bioc::", "", x, ignore.case = TRUE)
+    return(list(source = "bioc", pkg = pkg, via = "pak"))
+  }
+
   if (grepl("^cran:", x, ignore.case = TRUE)) {
     pkg <- sub("^cran:", "", x, ignore.case = TRUE)
     return(list(source = "cran", pkg = pkg))
@@ -114,8 +110,8 @@ parse_one_spec <- function(x) {
     repo <- sub("^(github|gh):", "", x, ignore.case = TRUE)
     parts <- strsplit(repo, "@", fixed = TRUE)[[1]]
     repo <- parts[1]
-    ref  <- if (length(parts) > 1) parts[2] else NULL
-    pkg  <- basename(repo)
+    ref <- if (length(parts) > 1) parts[2] else NULL
+    pkg <- basename(repo)
     return(list(source = "github", pkg = pkg, repo = repo, ref = ref))
   }
 
@@ -123,8 +119,8 @@ parse_one_spec <- function(x) {
   if (grepl("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(@[A-Za-z0-9_.-]+)?$", x)) {
     parts <- strsplit(x, "@", fixed = TRUE)[[1]]
     repo <- parts[1]
-    ref  <- if (length(parts) > 1) parts[2] else NULL
-    pkg  <- basename(repo)
+    ref <- if (length(parts) > 1) parts[2] else NULL
+    pkg <- basename(repo)
     return(list(source = "github", pkg = pkg, repo = repo, ref = ref))
   }
 
@@ -134,7 +130,9 @@ parse_one_spec <- function(x) {
 
 # Vectorized parse
 parse_specs <- function(pkgs) {
-  if (!length(pkgs)) return(list())
+  if (!length(pkgs)) {
+    return(list())
+  }
   lapply(pkgs, parse_one_spec)
 }
 
@@ -144,9 +142,10 @@ install_cran <- function(pkg, dependencies, quiet) {
   ensure_cran_repos()
   nullrun <- if (quiet) run_quietly else identity
   nullrun(install.packages(pkg,
-                           dependencies = dependencies,
-                           quiet = quiet,
-                           Ncpus = max(1L, getOption("Ncpus", 1L))))
+    dependencies = dependencies,
+    quiet = quiet,
+    Ncpus = max(1L, getOption("Ncpus", 1L))
+  ))
 }
 
 ensure_installer <- function(which = c("remotes", "devtools"), quiet = TRUE) {
@@ -183,6 +182,40 @@ install_bioc <- function(pkg, dependencies, quiet = TRUE) {
   (if (quiet) run_quietly else identity)(f(pkg, dependencies = dependencies, ask = FALSE, update = FALSE))
 }
 
+# ---- pak integration ---------------------------------------------------------
+
+# Ensure 'pak' is available; try CRAN first, then GitHub fallback.
+ensure_pak <- function(quiet = TRUE) {
+  if (!is_installed("pak")) {
+    # Attempt CRAN first
+    try(install_cran("pak", dependencies = TRUE, quiet = quiet), silent = TRUE)
+    .installed_cache(refresh = TRUE)
+    if (!is_installed("pak")) {
+      # Fallback to GitHub (bootstrap via remotes)
+      ensure_installer("remotes", quiet = quiet)
+      (if (quiet) run_quietly else identity)(
+        remotes::install_github("r-lib/pak", upgrade = "never", quiet = quiet, dependencies = TRUE)
+      )
+      .installed_cache(refresh = TRUE)
+    }
+  }
+}
+
+# Generic installer via pak::pkg_install(), translating our spec to pak syntax.
+install_via_pak <- function(sp, dependencies, quiet = TRUE) {
+  ensure_pak(quiet = quiet)
+  spec <- switch(sp$source,
+    cran   = sp$pkg, # e.g., "arrow"
+    github = paste0("github::", sp$repo, if (!is.null(sp$ref)) paste0("@", sp$ref) else ""),
+    bioc   = paste0("bioc::", sp$pkg),
+    stop("pak installer does not support source: ", sp$source)
+  )
+  f <- get("pkg_install", envir = asNamespace("pak"))
+  (if (quiet) run_quietly else identity)(
+    f(spec, dependencies = dependencies, upgrade = FALSE, ask = FALSE)
+  )
+}
+
 # ---------- Core API ----------
 
 #' smart_install
@@ -194,13 +227,18 @@ install_bioc <- function(pkg, dependencies, quiet = TRUE) {
 #' @param quiet logical: suppress output where possible (default TRUE)
 #' @param prefer_github_if_both logical: if TRUE and both CRAN and GitHub versions are installed/available,
 #'        prefer GitHub install. Default FALSE (CRAN stability first).
+#' @param use_pak logical: if TRUE, route all installs via pak::pkg_install(). Defaults to FALSE.
+#'        Per-package override via specs "pak:<spec>", "github::<owner>/<repo>[@ref]", "bioc::Pkg".
+#' @param progress logical: print lightweight progress markers. Default interactive().
 #' @return list with components: installed_new, already_installed, loaded, failed_install, failed_load, not_found
 smart_install <- function(pkgs,
                           dependencies = TRUE,
                           load = TRUE,
                           install_github_via = c("remotes", "devtools"),
                           quiet = TRUE,
-                          prefer_github_if_both = FALSE) {
+                          prefer_github_if_both = FALSE,
+                          use_pak = FALSE,
+                          progress = interactive()) {
   stopifnot(is.character(pkgs) || is.list(pkgs))
   specs <- if (is.character(pkgs)) parse_specs(pkgs) else lapply(pkgs, parse_one_spec)
 
@@ -218,21 +256,30 @@ smart_install <- function(pkgs,
     src <- sp$source
     pkg <- sp$pkg
 
-    # Decide if already installed
-    if (is_installed(pkg)) {
-      already_installed <- c(already_installed, pkg)
-      # Optionally re-install from GitHub if requested preference
-      do_install <- FALSE
-      if (src == "github" && isTRUE(prefer_github_if_both)) do_install <- TRUE
+    # Backend selection and progress marker
+    use_pak_here <- isTRUE(use_pak) || identical(sp$via, "pak")
+    backend_label <- if (use_pak_here) {
+      "pak"
+    } else if (src == "github") {
+      install_github_via
+    } else if (src == "bioc") {
+      "BiocManager"
     } else {
-      do_install <- TRUE
+      "base"
     }
+    if (isTRUE(progress)) {
+      message(sprintf("→ %s: installing from %s via %s ...", pkg, src, backend_label))
+    }
+
+    # Decide if we should install
+    do_install <- !is_installed(pkg) || (src == "github" && isTRUE(prefer_github_if_both))
 
     if (isTRUE(do_install)) {
       ok <- TRUE
-      err <- NULL
       tryCatch({
-        if (src == "cran") {
+        if (use_pak_here) {
+          install_via_pak(sp, dependencies = dependencies, quiet = quiet)
+        } else if (src == "cran") {
           install_cran(pkg, dependencies = dependencies, quiet = quiet)
         } else if (src == "github") {
           if (identical(install_github_via, "remotes")) {
@@ -245,7 +292,9 @@ smart_install <- function(pkgs,
         } else {
           stop("Unknown source: ", src)
         }
-      }, error = function(e) { ok <<- FALSE; err <<- e })
+      }, error = function(e) {
+        ok <<- FALSE
+      })
 
       # Refresh installed cache after install attempt
       .installed_cache(refresh = TRUE)
@@ -254,21 +303,17 @@ smart_install <- function(pkgs,
         installed_new <- c(installed_new, pkg)
       } else {
         failed_install <- c(failed_install, pkg)
-        # If the package truly isn't installed, classify as not_found (likely typo)
         if (!is_installed(pkg)) not_found <- c(not_found, pkg)
-        # Continue to next package; loading makes no sense here
         next
       }
+    } else {
+      already_installed <- c(already_installed, pkg)
     }
 
     # Load if requested
     if (isTRUE(load)) {
       res <- safe_library(pkg)
-      if (isTRUE(res$ok)) {
-        loaded_ok <- c(loaded_ok, pkg)
-      } else {
-        failed_load <- c(failed_load, pkg)
-      }
+      if (isTRUE(res$ok)) loaded_ok <- c(loaded_ok, pkg) else failed_load <- c(failed_load, pkg)
     }
   }
 
@@ -295,111 +340,5 @@ smart_install <- function(pkgs,
   if (length(result$not_found))      message(summarize("Not found (typo?)", result$not_found))
 
   invisible(result)
-}
-
-# ---------- CLI Wrapper (optional) ----------
-
-print_help <- function() {
-  cat <<'EOF'
-smart-install.R — install and load R packages from CRAN/GitHub/Bioc
-
-USAGE:
-  Rscript smart-install.R [--packages="<spec1,spec2,...>"] [--packages-file=/path/list.txt]
-                          [--dependencies=TRUE|FALSE|NA|"Suggests"|...]
-                          [--github=remotes|devtools] [--no-load] [--verbose]
-
-PACKAGE SPEC FORMATS:
-  - Plain CRAN:         ggplot2
-  - Explicit CRAN:      cran:ggplot2
-  - GitHub (prefix):    github:r-lib/usethis      or gh:r-lib/usethis
-  - GitHub (heuristic): r-lib/usethis             (owner/repo)
-  - GitHub with ref:    r-lib/usethis@v3.0.0
-  - Bioconductor:       bioc:DESeq2               (optional)
-
-OPTIONS:
-  --packages           Comma-separated package specs (see above).
-  --packages-file      Path to a text file with one spec per line (comments '#' allowed).
-  --dependencies       TRUE (default), FALSE, NA, or character vector as a single string,
-                       e.g., "Depends,Suggests" (quotes required).
-  --github             Installer for GitHub: 'remotes' (default) or 'devtools'.
-  --no-load            Do not library() attach after installation.
-  --verbose            Show installer output (by default, most noise is suppressed).
-  --help, -h           Show this help.
-
-EXAMPLES:
-  Rscript smart-install.R --packages="data.table,gh:r-lib/usethis,r-lib/pkgcache"
-  Rscript smart-install.R --packages-file=pkgs.txt --dependencies="Depends,Suggests"
-  Rscript smart-install.R --packages="bioc:DESeq2,cran:ggplot2" --github=devtools
-
-EXIT:
-  Always exits 0. Inspect the printed summary for failures.
-
-EOF
-}
-
-# Basic CLI only when executed via Rscript
-if (!interactive()) {
-  args <- commandArgs(trailingOnly = TRUE)
-  if (any(args %in% c("--help", "-h"))) {
-    print_help()
-    quit(status = 0)
-  }
-
-  # Parse simple flags
-  get_arg <- function(flag, default = NULL, has_value = TRUE) {
-    if (has_value) {
-      ix <- grep(paste0("^", flag, "="), args)
-      if (length(ix)) sub(paste0("^", flag, "="), "", args[ix[1]]) else default
-    } else {
-      any(args == flag)
-    }
-  }
-
-  pkgs_str  <- get_arg("--packages", default = "")
-  pkgs_file <- get_arg("--packages-file", default = "")
-  deps_str  <- get_arg("--dependencies", default = "TRUE")
-  gh_tool   <- get_arg("--github", default = "remotes")
-  no_load   <- get_arg("--no-load", default = FALSE, has_value = FALSE)
-  verbose   <- get_arg("--verbose",  default = FALSE, has_value = FALSE)
-
-  # Build package vector
-  pkgs <- character()
-  if (nzchar(pkgs_str)) {
-    # split on commas, trimming whitespace
-    pkgs <- c(pkgs, unlist(strsplit(pkgs_str, ",", fixed = TRUE)))
-  }
-  if (nzchar(pkgs_file)) {
-    if (!file.exists(pkgs_file)) stop("packages-file not found: ", pkgs_file)
-    lines <- readLines(pkgs_file, warn = FALSE)
-    lines <- trimws(lines)
-    lines <- lines[!grepl("^\\s*#", lines)]   # drop comments
-    lines <- lines[nzchar(lines)]             # drop empty
-    pkgs <- c(pkgs, lines)
-  }
-  pkgs <- trimws(pkgs)
-  pkgs <- pkgs[nzchar(pkgs)]
-
-  # Dependencies parsing
-  dependencies <- switch(tolower(deps_str),
-                         "true"  = TRUE,
-                         "false" = FALSE,
-                         "na"    = NA,
-                         { # allow character vector in quotes like "Depends,Suggests"
-                           # split on commas
-                           deps <- trimws(unlist(strsplit(deps_str, ",", fixed = TRUE)))
-                           if (length(deps)) deps else TRUE
-                         })
-
-  if (!length(pkgs)) {
-    message("No packages specified. Use --help for usage.")
-    quit(status = 0)
-  }
-
-  # Invoke core
-  smart_install(pkgs,
-                dependencies = dependencies,
-                load = !isTRUE(no_load),
-                install_github_via = gh_tool,
-                quiet = !isTRUE(verbose))
 }
 
