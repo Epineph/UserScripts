@@ -35,7 +35,7 @@ TS=$(date +%Y%m%d%H%M%S)
 case "${1:-}" in
 --backup) BACKUP=true ;;
 -h | --help)
-  cat <<'EOF'
+	cat <<'EOF'
 setup-vscode-arch.sh — Automate Visual Studio Code configuration on Arch Linux
 
 Usage:
@@ -45,26 +45,26 @@ Options:
   --backup    Backup existing VS Code User settings before overwriting.
   -h, --help  Show this help message.
 EOF
-  exit 0
-  ;;
+	exit 0
+	;;
 "") : ;; # no args
 *)
-  echo "Unknown option: $1" >&2
-  exit 2
-  ;;
+	echo "Unknown option: $1" >&2
+	exit 2
+	;;
 esac
 
 # -----------------------------------------------------------------------------
 # Backup existing User settings
 # -----------------------------------------------------------------------------
 if $BACKUP; then
-  echo "Backing up existing VS Code User settings..."
-  for f in settings.json keybindings.json; do
-    if [[ -f "$VSCODE_USER_DIR/$f" ]]; then
-      mv "$VSCODE_USER_DIR/$f" "$VSCODE_USER_DIR/${f}.bak-$TS"
-      echo "  • $f → ${f}.bak-$TS"
-    fi
-  done
+	echo "Backing up existing VS Code User settings..."
+	for f in settings.json keybindings.json; do
+		if [[ -f "$VSCODE_USER_DIR/$f" ]]; then
+			mv "$VSCODE_USER_DIR/$f" "$VSCODE_USER_DIR/${f}.bak-$TS"
+			echo "  • $f → ${f}.bak-$TS"
+		fi
+	done
 fi
 
 # -----------------------------------------------------------------------------
@@ -76,71 +76,89 @@ mkdir -p "$VSCODE_USER_DIR"
 # Install 'code' CLI if missing
 # -----------------------------------------------------------------------------
 if ! command -v code >/dev/null 2>&1; then
-  echo "'code' CLI not found. Installing package 'code' via pacman..."
-  sudo pacman -S --needed code
+	echo "'code' CLI not found. Installing package 'code' via pacman..."
+	sudo pacman -S --needed code
 else
-  echo "'code' CLI already installed."
+	echo "'code' CLI already installed."
 fi
 
 EXTRA_LANG_EXTENSIONS=(
-  mads-hartmann.bash-ide-vscode # Bash LSP
-  foxundermoon.shell-format     # Shell formatter
-  ms-python.vscode-pylance      # Python LSP
-  njpwerner.autodocstring       # Python docstrings
-  ms-python.isort               # Python import sorter
-  jebbs.plantuml                # UML for Java docs
+	mads-hartmann.bash-ide-vscode # Bash LSP
+	foxundermoon.shell-format     # Shell formatter
+	ms-python.vscode-pylance      # Python LSP
+	njpwerner.autodocstring       # Python docstrings
+	ms-python.isort               # Python import sorter
+	jebbs.plantuml                # UML for Java docs
+	doggy8088.netcore-editorconfiggenerator
+	dbaeumer.vscode-eslint
+	rvest.vs-code-prettier-eslint
+	exceptionptr.vscode-prettier-eslint
+	esbenp.prettier-vscode
+	jinxdash.prettier-rust
+	formulahendry.code-runner
+	HarryHopkinson.vs-code-runner
+	wowbox.code-debuger
+	ParthR2031.colorful-comments
+	jhessin.node-module-intellisense
+	mathematic.vscode-latex
+	James-Yu.latex-workshop
+	torn4dom4n.latex-support
+	tecosaur.latex-utilities
+	nickfode.latex-formatter
+	OrangeX4.latex-sympy-calculator
+	mjpvs.latex-previewer
 )
 
 echo "Installing extra language extensions..."
 for ext in "${EXTRA_LANG_EXTENSIONS[@]}"; do
-  code --install-extension "$ext" --force || true
-  echo "  • $ext"
+	code --install-extension "$ext" --force || true
+	echo "  • $ext"
 done
 
 # -----------------------------------------------------------------------------
 # Install VS Code extensions
 # -----------------------------------------------------------------------------
 EXTENSIONS=(
-  # Productivity
-  ms-vscode.cpptools
-  ms-python.python
-  esbenp.prettier-vscode
-  dbaeumer.vscode-eslint
-  eamodio.gitlens
-  ms-azuretools.vscode-docker
-  timonwong.shellcheck
-  bbenoist.Vagrant
-  bbenoist.Doxygen
-  bbenoist.Nix
-  timonwong.shellcheck
-  bmalehorn.shell-syntax
-  jeff-hykin.better-syntax
-  peaceshi.syntax-highlight
-  foxundermoon.shell-format
-  mkhl.shfmt
+	# Productivity
+	ms-vscode.cpptools
+	ms-python.python
+	esbenp.prettier-vscode
+	dbaeumer.vscode-eslint
+	eamodio.gitlens
+	ms-azuretools.vscode-docker
+	timonwong.shellcheck
+	bbenoist.Vagrant
+	bbenoist.Doxygen
+	bbenoist.Nix
+	timonwong.shellcheck
+	bmalehorn.shell-syntax
+	jeff-hykin.better-syntax
+	peaceshi.syntax-highlight
+	foxundermoon.shell-format
+	mkhl.shfmt
 
-  # LSP and IntelliSense
-  ms-vscode.vscode-typescript-next
-  redhat.java
-  rust-lang.rust-analyzer
+	# LSP and IntelliSense
+	ms-vscode.vscode-typescript-next
+	redhat.java
+	rust-lang.rust-analyzer
 
-  # Shell & Git
-  timonwong.shellcheck
-  ms-vscode-remote.remote-ssh
+	# Shell & Git
+	timonwong.shellcheck
+	ms-vscode-remote.remote-ssh
 
-  # Themes & Icons
-  PKief.material-icon-theme
-  dracula-theme.theme-dracula
+	# Themes & Icons
+	PKief.material-icon-theme
+	dracula-theme.theme-dracula
 
-  # Markdown & Docs
-  yzhang.markdown-all-in-one
-  DavidAnson.vscode-markdownlint
+	# Markdown & Docs
+	yzhang.markdown-all-in-one
+	DavidAnson.vscode-markdownlint
 )
 
 echo "Installing VS Code extensions..."
 for ext in "${EXTENSIONS[@]}"; do
-  code --install-extension "$ext" --force || true
-  echo "  • $ext"
+	code --install-extension "$ext" --force || true
+	echo "  • $ext"
 done
 
 # -----------------------------------------------------------------------------
