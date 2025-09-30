@@ -1,0 +1,12 @@
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "UP", "B", "SIM", "PERF", "W", "N"]
+ignore = ["E203", "W503"]  # Black compatibility
+
+[tool.ruff.lint.isort]
+known-first-party = ["space_scout"]
