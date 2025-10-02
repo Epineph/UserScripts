@@ -35,6 +35,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import shlex
 import time
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -340,7 +341,7 @@ Install:
     ag.add_argument("--json", metavar="FILE", help="export results to JSON file")
     ag.add_argument("--install", action="store_true", help="prompt to install selected packages via chosen package manager")
     ag.add_argument("--manager", choices=("npm", "pnpm", "yarn", "bun"), default="npm", help="package manager for installation")
-    ag.add_argument("--global", action="store_true", help="perform a global installation")
+    ag.add_argument("--global","-g", dest="global_install", action="store_true", help="perform a global installation")
     ag.add_argument("--dev", action="store_true", help="add as a dev dependency (where supported)")
     ag.add_argument("--dry-run", action="store_true", help="print the install command without executing it")
     args = ag.parse_args()
@@ -439,12 +440,12 @@ Install:
                 else:
                     print("No packages selected. Nothing to install.")
                 return
-            cmd = build_install_cmd(args.manager, to_install, args.global, args.dev)
+            cmd = build_install_cmd(args.manager, to_install, getattr(args, "global"), args.dev)
             if args.dry_run:
                 if RICH_OK:
-                    console.print(f"[cyan]DRY RUN:[/] {' '.join(cmd)}")
+                    console.print(f"[cyan]DRY RUN:[/] {cmd_str}")
                 else:
-                    print("DRY RUN:", " ".join(cmd))
+                    print("DRY RUN:", cmd_str)
                 return
             if RICH_OK:
                 console.print(f"Installing via {args.manager}: {', '.join(to_install)}")
