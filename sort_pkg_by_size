@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+"""
+sort_pkg_by_size — List installed Arch packages sorted by on-disk size.
+
+Additions:
+  • -c/--contains <substr> (repeatable) for case-insensitive name filtering.
+  • --prefer: boost matches to the top without excluding non-matches.
+  • --only: keep only packages that match the provided substrings.
+  • -K/-M/-G: combinable minimum-size thresholds in KiB/MiB/GiB.
+              Effective threshold = max(K, M*2^10, G*2^20).
+  • Summary footer echoes active filters and cumulative size as a binary
+    breakdown (GiB→MiB→KiB→bytes) and as total bytes.
+
+Units are binary: 1 KiB = 2^10 bytes, 1 MiB = 2^20 bytes, 1 GiB = 2^30 bytes.
+"""
+
+import argparse
+import re
+import subprocess
+import sys
+from typing import List, Tuple, Optional
+
+# ------------------------------- subprocess -------------------------------- #
+def get_pacman_info() -> str:
+    """Return stdout of `pacman -Qi` or exit(1) on error."""
+    try:
+        proc = subprocess.run(
+            ["pacman", "-Qi"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Error: failed to execute 'pacman -Qi':\n{e.stderr}", file=sys.stderr)
+        sys.exit(1)
+    return proc.stdout
+
+
+# --------------------------------- parsing --------------------------------- #
+_SIZE_RE = re.compile(r"Installed Size\s*:\s*([\d\.,]+)\s*(KiB|MiB|GiB)")
+
+def _to_bytes(num: float, unit: str) -> int:
+    """Convert num with unit (KiB/MiB/GiB) to integer bytes (round to nearest)."""
+    if unit == "KiB":
+        factor = 1024
+    elif unit == "MiB":
+        factor = 1024 ** 2
+    elif unit == "GiB":
+        factor = 1024 ** 3
+    else:
+        factor = 1
+    return int(round(num * factor))
+
+def parse_info_block(block: str) -> Tuple[str, int]:
+    """
+    Extract (name, size_bytes) from one `pacman -Qi` block.
+    Returns (name, 0) if missing/unparsable.
+    """
+    name = "<unknown>"
+    size_bytes = 0
+    for line in block.splitlines():
+        if line.startswith("Name"):
+            parts = line.split(":", 1)
+            name = parts[1].strip() if len(parts) == 2 else name
+        elif line.startswith("Installed Size"):
+            m = _SIZE_RE.search(line)
+            if m:
+                num_str, unit = m.groups()
+                # Accept localized decimal comma; ignore thousand separators if any appear.
+                num = float(num_str.replace(",", "."))
+                size_bytes = _to_bytes(num, unit)
+    return name, size_bytes
+
+
+# ------------------------------- formatting -------------------------------- #
+def human_compact(size_bytes: int) -> str:
+    """
+    Compact MiB/GiB text for a single package cell:
+      < 1 GiB → 'XXX.XX MiB'
+      ≥ 1 GiB → 'X.XX GiB'
+    """
+    if size_bytes < 1024 ** 3:
+        mib = size_bytes / (1024 ** 2)
+        return f"{mib:.2f} MiB"
+    gib = size_bytes / (1024 ** 3)
+    return f"{gib:.2f} GiB"
+
+def breakdown_binary(size_bytes: int) -> str:
+    """
+    Full binary breakdown 'a GiB b MiB c KiB (N bytes)', skipping zero segments
+    except that bytes are always shown.
+    """
+    rem = size_bytes
+    gib = rem // (1024 ** 3)
+    rem %= 1024 ** 3
+    mib = rem // (1024 ** 2)
+    rem %= 1024 ** 2
+    kib = rem // 1024
+    b   = rem % 1024
+
+    parts: List[str] = []
+    if gib: parts.append(f"{gib} GiB")
+    if mib: parts.append(f"{mib} MiB")
+    if kib: parts.append(f"{kib} KiB")
+    if not parts:
+        parts.append("0 KiB")
+    parts.append(f"({size_bytes:,} bytes)")
+    return " ".join(parts)
+
+
+# --------------------------------- filters --------------------------------- #
+def compute_min_bytes(k: Optional[float], m: Optional[float], g: Optional[float]) -> int:
+    """Return effective minimal size in bytes from -K/-M/-G (max of provided)."""
+    candidates: List[int] = []
+    if k is not None: candidates.append(int(round(k * 1024)))
+    if m is not None: candidates.append(int(round(m * (1024 ** 2))))
+    if g is not None: candidates.append(int(round(g * (1024 ** 3))))
+    return max(candidates) if candidates else 0
+
+def name_match_info(name: str, needles: List[str]) -> Tuple[bool, int]:
+    """
+    Case-insensitive substring matching.
+    Returns (any_match, match_count).
+    """
+    low = name.lower()
+    hits = sum(1 for nd in needles if nd.lower() in low)
+    return (hits > 0, hits)
+
+
+# ---------------------------------- core ----------------------------------- #
+def collect_packages() -> List[Tuple[str, int]]:
+    """Parse all pacman blocks -> [(name, size_bytes), ...]."""
+    raw = get_pacman_info().strip()
+    if not raw:
+        return []
+    blocks = raw.split("\n\n")
+    return [parse_info_block(b) for b in blocks]
+
+def build_table(limit: Optional[int],
+                min_bytes: int,
+                contains: List[str],
+                match_all: bool,
+                prefer: bool,
+                only: bool) -> List[Tuple[str, int]]:
+    """
+    Assemble rows with filtering/sorting.
+    Sorting priority:
+      • with --prefer: matches first (by match_count desc), then size desc
+      • else: size desc
+    """
+    rows = collect_packages()
+
+    # Size filter
+    if min_bytes > 0:
+        rows = [(n, s) for (n, s) in rows if s >= min_bytes]
+
+    # Name filter / preference
+    if contains:
+        if match_all:
+            def ok(n): 
+                low = n.lower()
+                return all(nd.lower() in low for nd in contains)
+            rows = [(n, s) for (n, s) in rows if ok(n)] if only else rows
+            # For --prefer with match_all, we still compute a boolean match
+            def match_info(n): 
+                low = n.lower()
+                return (all(nd.lower() in low for nd in contains), len(contains))
+        else:
+            def match_info(n): 
+                return name_match_info(n, contains)
+            if only:
+                rows = [(n, s) for (n, s) in rows if match_info(n)[0]]
+
+        if prefer:
+            # Sort: matches first (False < True for not), then by match_count desc, then size desc
+            rows.sort(key=lambda t: (not match_info(t[0])[0], -match_info(t[0])[1], -t[1]))
+        else:
+            # No preference → size desc
+            rows.sort(key=lambda t: t[1], reverse=True)
+    else:
+        # No contains given → size desc
+        rows.sort(key=lambda t: t[1], reverse=True)
+
+    if limit is not None:
+        rows = rows[:max(0, limit)]
+    return rows
+
+
+# -------------------------------- printing --------------------------------- #
+def print_table(rows: List[Tuple[str, int]]) -> None:
+    header_pkg = "Package"
+    header_size = "Installed Size"
+    width_name = max(len(header_pkg), *(len(n) for n, _ in rows)) if rows else len(header_pkg)
+    width_size = max(len(header_size), 12)
+
+    print(f"{header_pkg:<{width_name}}  {header_size:>{width_size}}")
+    print("-" * (width_name + 2 + width_size))
+    for name, size_bytes in rows:
+        print(f"{name:<{width_name}}  {human_compact(size_bytes):>{width_size}}")
+
+
+def print_summary(rows: List[Tuple[str, int]],
+                  min_bytes: int,
+                  contains: List[str],
+                  match_all: bool,
+                  prefer: bool,
+                  only: bool) -> None:
+    total = sum(s for _, s in rows)
+    filters = []
+
+    if contains:
+        mode = "ALL" if match_all else "ANY"
+        sel  = "ONLY " if only else ""
+        pr   = " (preferred first)" if prefer and not only else ""
+        filters.append(f"{sel}name contains ({mode}): {', '.join(contains)}{pr}")
+
+    if min_bytes > 0:
+        filters.append(f"min size ≥ {breakdown_binary(min_bytes)}")
+
+    meta = f"{' | '.join(filters)}" if filters else "no filters"
+    print()
+    print(f"Summary: {len(rows)} packages; {meta}")
+    print(f"Total shown size = {breakdown_binary(total)}")
+
+
+# ---------------------------------- CLI ------------------------------------ #
+def build_argparser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="sort_pkg_by_size",
+        description="List installed packages sorted by on-disk size (binary units).",
+        add_help=True,
+    )
+    p.add_argument("-n", "--limit", type=int, metavar="N",
+                   help="show only the N largest entries after filtering")
+    # Name filters
+    p.add_argument("-c", "--contains", action="append", default=[],
+                   metavar="SUBSTR", help="case-insensitive substring to match (repeatable)")
+    p.add_argument("--match-all", action="store_true",
+                   help="require ALL provided substrings to be present")
+    p.add_argument("--prefer", action="store_true",
+                   help="prefer matches to the top without excluding others")
+    p.add_argument("--only", action="store_true",
+                   help="keep ONLY rows that match the provided substrings")
+    # Size thresholds
+    p.add_argument("-K", type=float, metavar="KiB",
+                   help="minimum size in KiB (binary)")
+    p.add_argument("-M", type=float, metavar="MiB",
+                   help="minimum size in MiB (binary)")
+    p.add_argument("-G", type=float, metavar="GiB",
+                   help="minimum size in GiB (binary)")
+    return p
+
+def main() -> None:
+    ap = build_argparser()
+    args = ap.parse_args()
+
+    min_bytes = compute_min_bytes(args.K, args.M, args.G)
+    rows = build_table(limit=args.limit,
+                       min_bytes=min_bytes,
+                       contains=args.contains,
+                       match_all=args.match_all,
+                       prefer=args.prefer,
+                       only=args.only)
+
+    print_table(rows)
+    print_summary(rows, min_bytes, args.contains, args.match_all, args.prefer, args.only)
+
+
+if __name__ == "__main__":
+    main()
+
