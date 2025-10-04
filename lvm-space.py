@@ -39,7 +39,26 @@ from rich import box
 
 # ---------- Helpers -----------------------------------------------------------
 
+def _iter_nodes(nodes):
+    """Yield dict nodes whether input is a list, a dict, or junk (skip non-dicts)."""
+    if nodes is None:
+        return
+    if isinstance(nodes, dict):
+        nodes = [nodes]
+    for n in nodes:
+        if isinstance(n, dict):
+            yield n
+
 def _run_json(cmd: List[str]) -> Optional[dict]:
+    try:
+        env = os.environ.copy()
+        env.setdefault("LC_ALL", "C")
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, env=env)
+        return json.loads(out)
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+        return None
+
+# def _run_json(cmd: List[str]) -> Optional[dict]:
     try:
         out = subprocess.check_output(cmd, text=True)
         return json.loads(out)
@@ -57,19 +76,23 @@ def _format_size(nbytes: int) -> str:
     return f"{x:.1f}Z"
 
 def _mount_map() -> Dict[str, str]:
-    """PATH → MOUNTPOINT (only real mounts)."""
-    lsblk = _run_json(["lsblk", "-J", "-o", "NAME,PATH,MOUNTPOINT"])
-    m = {}
+    """PATH → MOUNTPOINT (only real mounts). Robust to lsblk JSON quirks."""
+    lsblk = _run_json(["lsblk", "-J", "-o", "NAME,PATH,MOUNTPOINT,CHILDREN"])
+    m: Dict[str, str] = {}
+
     def walk(nodes):
-        for n in nodes:
-            path = n.get("path")
-            mp = n.get("mountpoint") or ""
+        for n in _iter_nodes(nodes):
+            # lsblk JSON uses lowercase keys; PATH→"path", MOUNTPOINT→"mountpoint"
+            path = n.get("path") or n.get("name")
+            mp = (n.get("mountpoint") or "").strip()
             if path and mp and os.path.ismount(mp):
                 m[path] = mp
-            for ch in n.get("children", []) or []:
+            ch = n.get("children")
+            if ch:
                 walk(ch)
-    if lsblk and "blockdevices" in lsblk:
-        walk(lsblk["blockdevices"])
+
+    if lsblk:
+        walk(lsblk.get("blockdevices"))
     return m
 
 def _disk_usage_safe(mount: str):
@@ -96,25 +119,53 @@ def _read_lvs() -> Optional[List[dict]]:
         return None
 
 def _fallback_lvs_from_lsblk() -> List[dict]:
-    """If lvs is unavailable, approximate from lsblk."""
-    j = _run_json(["lsblk", "-J", "-b", "-o", "NAME,TYPE,PATH,SIZE"])
-    rows = []
+    """
+    Approximate LVs from lsblk when lvs is unavailable/restricted.
+    More forgiving traversal; identifies LVs either by type='lvm' or by /dev/mapper/ paths.
+    """
+    j = _run_json(["lsblk", "-J", "-b", "-o", "NAME,TYPE,PATH,SIZE,CHILDREN"])
+    rows: List[dict] = []
+
     def walk(nodes):
-        for n in nodes:
-            if n.get("type") == "lvm":
+        for n in _iter_nodes(nodes):
+            typ = (n.get("type") or "").lower()
+            path = n.get("path") or n.get("name") or ""
+            size_raw = n.get("size")
+            try:
+                size_b = int(size_raw) if size_raw not in (None, "") else 0
+            except (TypeError, ValueError):
+                size_b = 0
+
+            # Heuristics: LVs usually show as type='lvm' or mapper paths without further children
+            is_lv = (typ == "lvm") or (path.startswith("/dev/mapper/") and not n.get("children"))
+
+            if is_lv:
+                # We don't know VG/LV names without lvs; derive best-effort from mapper path
+                # e.g., /dev/mapper/vg-lv  or  /dev/vg/lv (udev symlink)
+                base = os.path.basename(path)
+                if "-" in base:
+                    # Simple parse for vg-lv form
+                    vg_name, lv_name = base.split("-", 1)
+                else:
+                    vg_name, lv_name = "", base
+
                 rows.append({
-                    "lv_name": n.get("name", ""),
-                    "vg_name": "",  # unknown without lvs
-                    "lv_path": n.get("path", ""),
-                    "lv_size": n.get("size", "0"),
+                    "lv_name": lv_name,
+                    "vg_name": vg_name,
+                    "lv_path": path,
+                    "lv_size": str(size_b),
                     "lv_attr": "",
                     "data_percent": ""
                 })
-            for ch in n.get("children", []) or []:
+
+            ch = n.get("children")
+            if ch:
                 walk(ch)
-    if j and "blockdevices" in j:
-        walk(j["blockdevices"])
+
+    if j:
+        walk(j.get("blockdevices"))
     return rows
+
 
 # ---------- Core --------------------------------------------------------------
 
