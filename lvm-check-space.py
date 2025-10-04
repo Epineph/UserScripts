@@ -3,26 +3,24 @@
 lvm_check_space — LVM logical volume usage in a Rich-styled table.
 
 What it does
-  • Reads LV metadata via `lvs --reportformat json` (no sudo needed on typical Arch).
-  • Resolves mount points via `lsblk -J -o NAME,PATH,MOUNTPOINT`.
-  • Computes USED/FREE/%%USED with Python's shutil.disk_usage when the LV is mounted.
-  • Falls back to lsblk+df if `lvs` is unavailable or restricted.
+  • Reads LV metadata via `lvs --reportformat json` (no sudo needed on many hosts).
+  • Resolves mount points via `lsblk -J` (robust to schema quirks).
+  • Computes USED/FREE/%USED with shutil.disk_usage for mounted LVs.
+  • Falls back to lsblk-only discovery if `lvs` is unavailable or restricted.
   • Matches the visual style of your device-mapper table (bold cyan header, heavy box).
 
 Usage
-  lvm_check_space [--json] [--only-mounted] [--vg VG_NAME] [--sort {used,free,percent,size,name}]
-                  [--no-color]
+  lvm_check_space [--json] [--only-mounted] [--vg VG_NAME]
+                  [--sort {name,used,free,percent,size}] [--no-color]
 
-Options
-  --json           Emit raw JSON (one record per LV).
-  --only-mounted   Show only LVs that have a mountpoint.
-  --vg VG_NAME     Filter to a specific Volume Group.
-  --sort …         Sort rows by a key; default: name.
-  --no-color       Disable Rich colors (useful for logs or plain TTYs).
+Examples
+  lvm_check_space
+  lvm_check_space --only-mounted --sort percent
+  lvm_check_space --json | jq .
 
 Dependencies
   • lvm2 (for `lvs`) — optional but preferred
-  • util-linux (for `lsblk`, `findmnt`)
+  • util-linux (for `lsblk`)
   • Python package: rich  (Arch: pacman -S python-rich  |  pip: pip install rich)
 """
 
@@ -37,52 +35,113 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-# ---------- Helpers -----------------------------------------------------------
+# ───────────────────────────────────────────
+# Helpers (robust JSON, traversal, parsing)
+# ───────────────────────────────────────────
 
+def _iter_nodes(nodes):
+    """Yield dict nodes whether input is a list, a dict, or junk (skip non-dicts)."""
+    if nodes is None:
+        return
+    if isinstance(nodes, dict):
+        nodes = [nodes]
+    try:
+        iterator = iter(nodes)
+    except TypeError:
+        return
+    for n in iterator:
+        if isinstance(n, dict):
+            yield n
 
 def _run_json(cmd: List[str]) -> Optional[dict]:
+    """Run a command expected to output JSON; harden locale and silence stderr."""
     try:
-        out = subprocess.check_output(cmd, text=True)
+        env = os.environ.copy()
+        env.setdefault("LC_ALL", "C")  # avoid localized headers/decimals
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, env=env)
         return json.loads(out)
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        json.JSONDecodeError,
-    ):
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
         return None
 
-
 def _format_size(nbytes: int) -> str:
-    # binary units, aligned with your device-mapper script
-    units = ["B", "K", "M", "G", "T", "P", "E"]
+    """Format bytes with binary units."""
+    units = ["B", "K", "M", "G", "T", "P", "E", "Z", "Y"]
     x = float(nbytes)
     for u in units:
         if x < 1024.0:
             return f"{x:.1f}{u}"
         x /= 1024.0
-    return f"{x:.1f}Z"
+    return f"{x:.1f}Y"
 
+def _parse_bytes(val) -> int:
+    """Parse size strings like '4.00g', '141.3G', '106954752B', or raw ints."""
+    if val is None:
+        return 0
+    s = str(val).strip().lower()
+    # Fast path: plain integer bytes
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    import re
+    m = re.match(r'^([0-9]*\.?[0-9]+)\s*([kmgtpezy]?)b?$', s)
+    if not m:
+        return 0
+    num = float(m.group(1))
+    unit = m.group(2)
+    mult = {
+        '': 1, 'k': 1024**1, 'm': 1024**2, 'g': 1024**3,
+        't': 1024**4, 'p': 1024**5, 'e': 1024**6, 'z': 1024**7, 'y': 1024**8
+    }.get(unit, 1)
+    return int(num * mult)
+
+def _aliases_for_dev(path: str):
+    """
+    Yield common alias paths for an LV:
+      • mapper-style: /dev/mapper/vg-lv
+      • udev-style:   /dev/vg/lv
+      • realpath() and the original path
+    """
+    paths = {path}
+    rp = os.path.realpath(path)
+    paths.add(rp)
+    base = os.path.basename(rp)
+    # /dev/mapper/vg-lv  ↔  /dev/vg/lv
+    if "/mapper/" in rp and "-" in base:
+        vg, lv = base.split("-", 1)
+        paths.add(f"/dev/{vg}/{lv}")
+    # /dev/vg/lv  ↔  /dev/mapper/vg-lv
+    parts = rp.split("/")
+    if len(parts) >= 4 and parts[1] == "dev":
+        vg = parts[2]
+        lv = parts[3] if len(parts) >= 4 else ""
+        if vg and lv:
+            paths.add(f"/dev/mapper/{vg}-{lv}")
+    return paths
 
 def _mount_map() -> Dict[str, str]:
-    """PATH → MOUNTPOINT (only real mounts)."""
-    lsblk = _run_json(["lsblk", "-J", "-o", "NAME,PATH,MOUNTPOINT"])
-    m = {}
+    """PATH → MOUNTPOINT (only real mounts). Robust to lsblk JSON quirks."""
+    lsblk = _run_json(["lsblk", "-J", "-o", "NAME,PATH,MOUNTPOINT,CHILDREN"])
+    m: Dict[str, str] = {}
 
     def walk(nodes):
-        for n in nodes:
-            path = n.get("path")
-            mp = n.get("mountpoint") or ""
+        for n in _iter_nodes(nodes):
+            path = n.get("path") or n.get("name")
+            mp = (n.get("mountpoint") or "").strip()
             if path and mp and os.path.ismount(mp):
-                m[path] = mp
-            for ch in n.get("children", []) or []:
+                # Record all aliases so later lookups succeed regardless of form.
+                for alias in _aliases_for_dev(path):
+                    m[alias] = mp
+            ch = n.get("children")
+            if ch:
                 walk(ch)
 
-    if lsblk and "blockdevices" in lsblk:
-        walk(lsblk["blockdevices"])
+    if lsblk:
+        walk(lsblk.get("blockdevices"))
     return m
 
-
 def _disk_usage_safe(mount: str):
+    """Return (used, free, total, percent) for a mountpoint; None on error."""
     try:
         u = shutil.disk_usage(mount)
         used = u.used
@@ -93,55 +152,71 @@ def _disk_usage_safe(mount: str):
     except Exception:
         return None
 
-
 def _read_lvs() -> Optional[List[dict]]:
-    """Preferred source: lvs JSON."""
-    j = _run_json(
-        [
-            "lvs",
-            "--reportformat",
-            "json",
-            "-o",
-            "lv_name,vg_name,lv_path,lv_size,lv_attr,data_percent",
-        ]
-    )
+    """Preferred source: lvs JSON; returns list of LV dicts or None if unavailable."""
+    j = _run_json([
+        "lvs", "--reportformat", "json",
+        "-o", "lv_name,vg_name,lv_path,lv_size,lv_attr,data_percent"
+    ])
     if not j:
         return None
-    # Arch lvm JSON shape: {"report":[{"lv":[ {...}, ... ]}]}
     try:
         return j["report"][0]["lv"]
     except Exception:
         return None
 
-
 def _fallback_lvs_from_lsblk() -> List[dict]:
-    """If lvs is unavailable, approximate from lsblk."""
-    j = _run_json(["lsblk", "-J", "-b", "-o", "NAME,TYPE,PATH,SIZE"])
-    rows = []
+    """
+    Approximate LVs from lsblk when lvs is unavailable/restricted.
+    Identify LVs via type='lvm'/'dm', mapper paths, or udev /dev/<vg>/<lv> forms.
+    """
+    j = _run_json(["lsblk", "-J", "-b", "-o", "NAME,TYPE,PATH,SIZE,CHILDREN"])
+    rows: List[dict] = []
 
     def walk(nodes):
-        for n in nodes:
-            if n.get("type") == "lvm":
-                rows.append(
-                    {
-                        "lv_name": n.get("name", ""),
-                        "vg_name": "",  # unknown without lvs
-                        "lv_path": n.get("path", ""),
-                        "lv_size": n.get("size", "0"),
-                        "lv_attr": "",
-                        "data_percent": "",
-                    }
-                )
-            for ch in n.get("children", []) or []:
+        for n in _iter_nodes(nodes):
+            typ  = (n.get("type") or "").lower()
+            path = n.get("path") or n.get("name") or ""
+            size_raw = n.get("size")
+            try:
+                size_b = int(size_raw) if size_raw not in (None, "") else 0
+            except (TypeError, ValueError):
+                size_b = 0
+
+            is_lv = (
+                typ in ("lvm", "dm") or
+                path.startswith("/dev/mapper/") or
+                (path.startswith("/dev/") and "-" in os.path.basename(os.path.realpath(path)))
+            )
+
+            if is_lv:
+                # Derive best-effort VG/LV from name when possible
+                base = os.path.basename(os.path.realpath(path))
+                if "-" in base:
+                    vg_name, lv_name = base.split("-", 1)
+                else:
+                    vg_name, lv_name = "", base
+
+                rows.append({
+                    "lv_name": lv_name,
+                    "vg_name": vg_name,
+                    "lv_path": path,
+                    "lv_size": str(size_b),
+                    "lv_attr": "",
+                    "data_percent": ""
+                })
+
+            ch = n.get("children")
+            if ch:
                 walk(ch)
 
-    if j and "blockdevices" in j:
-        walk(j["blockdevices"])
+    if j:
+        walk(j.get("blockdevices"))
     return rows
 
-
-# ---------- Core --------------------------------------------------------------
-
+# ───────────────────────────────────────────
+# Core
+# ───────────────────────────────────────────
 
 def gather(args) -> List[dict]:
     lvs = _read_lvs()
@@ -157,16 +232,16 @@ def gather(args) -> List[dict]:
             "lv_path": row.get("lv_path", ""),
             "lv_attr": row.get("lv_attr", ""),
         }
-        # size in bytes; lvs may emit like "123456B" or plain bytes depending on version
-        raw_size = str(row.get("lv_size", "0")).rstrip("B")
-        try:
-            lv_size_b = int(raw_size)
-        except ValueError:
-            # final fallback if lvs emitted units unexpectedly
-            lv_size_b = 0
-        lv["size_bytes"] = lv_size_b
 
-        mount = mounts.get(lv["lv_path"], "")
+        # Robust size parsing (handles "4.00g", "141.3G", "106954752B", or bytes)
+        lv["size_bytes"] = _parse_bytes(row.get("lv_size"))
+
+        # Resolve mountpoint using aliases (/dev/mapper/vg-lv <-> /dev/vg/lv)
+        mount = ""
+        for alias in _aliases_for_dev(lv["lv_path"] or ""):
+            mount = mounts.get(alias, "")
+            if mount:
+                break
         lv["mountpoint"] = mount
 
         # Only compute usage for real mounts
@@ -190,48 +265,42 @@ def gather(args) -> List[dict]:
 
     # sorting
     key = args.sort
-
     def kf(x):
         if key == "used":
             return x.get("used_bytes", 0)
         if key == "free":
             return x.get("free_bytes", 0)
         if key == "percent":
-            return (
-                x.get("percent_used")
-                if x.get("percent_used") is not None
-                else -1.0
-            )
+            return (x.get("percent_used") if x.get("percent_used") is not None else -1.0)
         if key == "size":
             return x.get("size_bytes", 0)
-        return (x.get("vg_name", ""), x.get("lv_name", ""))
-
+        return (x.get("vg_name",""), x.get("lv_name",""))
     out.sort(key=kf)
     return out
-
 
 def as_json(rows: List[dict]) -> str:
     j = []
     for r in rows:
-        j.append(
-            {
-                "vg": r["vg_name"],
-                "lv": r["lv_name"],
-                "path": r["lv_path"],
-                "mount": r["mountpoint"],
-                "size_bytes": r["size_bytes"],
-                "used_bytes": r["used_bytes"],
-                "free_bytes": r["free_bytes"],
-                "percent_used": r["percent_used"],
-                "attrs": r["lv_attr"],
-            }
-        )
+        j.append({
+            "vg": r["vg_name"],
+            "lv": r["lv_name"],
+            "path": r["lv_path"],
+            "mount": r["mountpoint"],
+            "size_bytes": r["size_bytes"],
+            "used_bytes": r["used_bytes"],
+            "free_bytes": r["free_bytes"],
+            "percent_used": r["percent_used"],
+            "attrs": r["lv_attr"],
+        })
     return json.dumps(j, indent=2)
-
 
 def render_table(rows: List[dict], color: bool = True):
     console = Console(no_color=not color)
-    table = Table(box=box.HEAVY_HEAD, header_style="bold cyan", show_lines=False)
+    table = Table(
+        box=box.HEAVY_HEAD,
+        header_style="bold cyan",
+        show_lines=False
+    )
     table.add_column("LV", style="dim", no_wrap=True)
     table.add_column("VG")
     table.add_column("MOUNT")
@@ -250,7 +319,6 @@ def render_table(rows: List[dict], color: bool = True):
             pct_s = ""
         else:
             pct = r["percent_used"]
-            # subtle severity coloring
             if pct >= 90:
                 pct_s = f"[bold red]{pct:.0f}%[/]"
             elif pct >= 75:
@@ -267,44 +335,33 @@ def render_table(rows: List[dict], color: bool = True):
             free_s,
             pct_s,
             r["lv_attr"],
-            r["lv_path"],
+            r["lv_path"]
         )
 
     console.print(table)
 
-
 def main():
-    p = argparse.ArgumentParser(
-        description="Show LVM logical volume usage in a Rich-styled table."
-    )
-    p.add_argument(
-        "--json", action="store_true", help="Output JSON instead of a table"
-    )
-    p.add_argument(
-        "--only-mounted",
-        action="store_true",
-        help="Show only LVs with a mountpoint",
-    )
-    p.add_argument(
-        "--vg", metavar="VG_NAME", help="Filter to a specific volume group"
-    )
-    p.add_argument(
-        "--sort",
-        choices=["name", "used", "free", "percent", "size"],
-        default="name",
-        help="Sort rows (default: name)",
-    )
-    p.add_argument(
-        "--no-color", action="store_true", help="Disable color output"
-    )
+    p = argparse.ArgumentParser(description="Show LVM logical volume usage in a Rich-styled table.")
+    p.add_argument("--json", action="store_true", help="Output JSON instead of a table")
+    p.add_argument("--only-mounted", action="store_true", help="Show only LVs with a mountpoint")
+    p.add_argument("--vg", metavar="VG_NAME", help="Filter to a specific volume group")
+    p.add_argument("--sort", choices=["name","used","free","percent","size"], default="name",
+                   help="Sort rows (default: name)")
+    p.add_argument("--no-color", action="store_true", help="Disable color output")
     args = p.parse_args()
 
     rows = gather(args)
+
+    # If nothing to show, print an empty table but also a hint to stderr.
+    if not rows and not args.json:
+        Console().print("[dim]No logical volumes discovered.[/dim]")
+        return
+
     if args.json:
         print(as_json(rows))
         return
     render_table(rows, color=not args.no_color)
 
-
 if __name__ == "__main__":
     main()
+

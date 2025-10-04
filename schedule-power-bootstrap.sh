@@ -3,7 +3,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 # ─────────────────────────── Self-bootstrap helpers ───────────────────────────
-BOOTSTRAP_DIR_ALLOWED="/usr/local/bin"      # only bootstrap when the main script lives here
+BOOTSTRAP_DIR_ALLOWED="/usr/local/bin" # only bootstrap when the main script lives here
 SELF_PATH="$(readlink -f "$0")"
 SELF_DIR="$(dirname "$SELF_PATH")"
 NEED_SUDO=false
@@ -21,13 +21,15 @@ write_file() {
   # If a different file already exists, back it up conservatively
   if [ -e "$dest" ]; then
     # Compare against incoming content; if identical, return fast.
-    local tmp; tmp="$(mktemp)"
+    local tmp
+    tmp="$(mktemp)"
     cat >"$tmp"
     if cmp -s "$tmp" "$dest"; then
       rm -f "$tmp"
       return 0
     fi
-    local ts; ts="$(date +%Y%m%d_%H%M%S)"
+    local ts
+    ts="$(date +%Y%m%d_%H%M%S)"
     local bak="${dest}.bak-${ts}"
     $NEED_SUDO && sudo cp -p -- "$dest" "$bak" || cp -p -- "$dest" "$bak"
     $NEED_SUDO && sudo mv -- "$tmp" "$dest" || mv -- "$tmp" "$dest"
@@ -138,7 +140,10 @@ EOF
 
 # Early help gate:
 case "${1:-}" in
-  -h|--help) usage; exit 0 ;;
+-h | --help)
+  usage
+  exit 0
+  ;;
 esac
 
 set -Eeuo pipefail
@@ -152,24 +157,28 @@ MINUTES=0
 SECONDS=0
 MODE=""
 QUIET=false
-SILENCE_WARN=false     # suppress intermediate notifications
-SILENCE_OUTPUT=false   # suppress terminal countdown
-ALWAYS_FINAL=true      # 10s final warning always shown
+SILENCE_WARN=false   # suppress intermediate notifications
+SILENCE_OUTPUT=false # suppress terminal countdown
+ALWAYS_FINAL=true    # 10s final warning always shown
 NO_INHIBIT=false
 FORCE=false
 DO_CANCEL=false
-CANCEL_HINT="your Hyprland cancel key"  # shown in last notices
+CANCEL_HINT="your Hyprland cancel key" # shown in last notices
 PIDFILE="/run/user/${UID}/schedule_power.pid"
 STATEFILE="/run/user/${UID}/schedule_power.state"
 INHIBITED_FLAG="${INHIBITED:-0}"
 
 # ────────────── Small helpers ──────────────
-die() { echo "schedule_power: $*" >&2; exit 1; }
+die() {
+  echo "schedule_power: $*" >&2
+  exit 1
+}
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
 notify() { # intermediate notifications (obey SILENCE_WARN)
-  local title="$1"; shift
+  local title="$1"
+  shift
   local body="$*"
   $SILENCE_WARN && return 0
   if have notify-send; then
@@ -181,7 +190,8 @@ notify() { # intermediate notifications (obey SILENCE_WARN)
 }
 
 notify_final() { # final 10s warning (never silenced)
-  local title="$1"; shift
+  local title="$1"
+  shift
   local body="$*"
   if have notify-send; then
     notify-send --urgency=critical --app-name="schedule_power" "$title" "$body" || true
@@ -208,21 +218,55 @@ progress_line() { # one-line countdown
 # Supports: --quiet, --silence, --silence-warnings, --silence=alarm|output|all, --silence-all,
 #           --no-inhibit, --force, --cancel, --cancel-hint <str>
 LONG_ARGS=()
-while (( "$#" )); do
+while (("$#")); do
   case "$1" in
-    --quiet) QUIET=true; shift ;;
-    --silence|--silence-warnings) SILENCE_WARN=true; shift ;;
-    --silence=alarm) SILENCE_WARN=true; shift ;;
-    --silence=output) SILENCE_OUTPUT=true; shift ;;
-    --silence=all|--silence-all) QUIET=true; SILENCE_WARN=true; SILENCE_OUTPUT=true; shift ;;
-    --no-inhibit) NO_INHIBIT=true; shift ;;
-    --force) FORCE=true; shift ;;
-    --cancel) DO_CANCEL=true; shift ;;
-    --cancel-hint)
-      [ $# -ge 2 ] || die "missing argument to --cancel-hint"
-      CANCEL_HINT="$2"; shift 2 ;;
-    --) shift; break ;;
-    -*|*) LONG_ARGS+=("$1"); shift ;;
+  --quiet)
+    QUIET=true
+    shift
+    ;;
+  --silence | --silence-warnings)
+    SILENCE_WARN=true
+    shift
+    ;;
+  --silence=alarm)
+    SILENCE_WARN=true
+    shift
+    ;;
+  --silence=output)
+    SILENCE_OUTPUT=true
+    shift
+    ;;
+  --silence=all | --silence-all)
+    QUIET=true
+    SILENCE_WARN=true
+    SILENCE_OUTPUT=true
+    shift
+    ;;
+  --no-inhibit)
+    NO_INHIBIT=true
+    shift
+    ;;
+  --force)
+    FORCE=true
+    shift
+    ;;
+  --cancel)
+    DO_CANCEL=true
+    shift
+    ;;
+  --cancel-hint)
+    [ $# -ge 2 ] || die "missing argument to --cancel-hint"
+    CANCEL_HINT="$2"
+    shift 2
+    ;;
+  --)
+    shift
+    break
+    ;;
+  -* | *)
+    LONG_ARGS+=("$1")
+    shift
+    ;;
   esac
 done
 # Rebuild positional params for getopts
@@ -281,21 +325,30 @@ $DO_CANCEL && do_cancel
 # ────────────── Parse short options ──────────────
 while getopts ":rsH:M:S:h" opt; do
   case "$opt" in
-    r) MODE="reboot" ;;
-    s) MODE="shutdown" ;;
-    H) HOURS="$OPTARG" ;;
-    M) MINUTES="$OPTARG" ;;
-    S) SECONDS="$OPTARG" ;;
-    h) usage; exit 0 ;;
-    \?) usage; exit 1 ;;
+  r) MODE="reboot" ;;
+  s) MODE="shutdown" ;;
+  H) HOURS="$OPTARG" ;;
+  M) MINUTES="$OPTARG" ;;
+  S) SECONDS="$OPTARG" ;;
+  h)
+    usage
+    exit 0
+    ;;
+  \?)
+    usage
+    exit 1
+    ;;
   esac
 done
 
-[[ -n "$MODE" ]] || { usage; exit 1; }
+[[ -n "$MODE" ]] || {
+  usage
+  exit 1
+}
 [[ "$HOURS" =~ ^[0-9]+$ && "$MINUTES" =~ ^[0-9]+$ && "$SECONDS" =~ ^[0-9]+$ ]] || die "H/M/S must be non-negative integers."
 
-TOTAL_DELAY=$(( HOURS*3600 + MINUTES*60 + SECONDS ))
-(( TOTAL_DELAY > 0 )) || die "total delay must be > 0 seconds."
+TOTAL_DELAY=$((HOURS * 3600 + MINUTES * 60 + SECONDS))
+((TOTAL_DELAY > 0)) || die "total delay must be > 0 seconds."
 
 # ────────────── Ensure runtime dirs ──────────────
 mkdir -p "/run/user/${UID}" || true
@@ -313,7 +366,7 @@ if [ -f "$PIDFILE" ]; then
     fi
   fi
 fi
-echo $$ > "$PIDFILE"
+echo $$ >"$PIDFILE"
 
 cleanup() { rm -f "$PIDFILE" "$STATEFILE" 2>/dev/null || true; }
 trap cleanup EXIT
@@ -342,7 +395,10 @@ if [ -n "${SESSION_ID:-}" ] && have loginctl; then
 fi
 
 idle_hint() {
-  $IDLE_SUPPORTED || { echo "unknown"; return; }
+  $IDLE_SUPPORTED || {
+    echo "unknown"
+    return
+  }
   loginctl show-session "$SESSION_ID" -p IdleHint 2>/dev/null | awk -F= '{print $2}'
 }
 
@@ -354,51 +410,57 @@ declare -A fired=([1800]=0 [600]=0 [180]=0 [60]=0 [15]=0)
 thresholds=(1800 600 180 60 15)
 
 START=$(date +%s)
-END=$(( START + TOTAL_DELAY ))
+END=$((START + TOTAL_DELAY))
 EXTENDED_ON_IDLE=false
 
 # Main loop
 while :; do
-  $CANCELLED && { say; say "Cancelled."; notify "Cancelled" "The scheduled $MODE was cancelled."; exit 0; }
+  $CANCELLED && {
+    say
+    say "Cancelled."
+    notify "Cancelled" "The scheduled $MODE was cancelled."
+    exit 0
+  }
 
   NOW=$(date +%s)
-  REMAIN=$(( END - NOW ))
-  (( REMAIN < 0 )) && REMAIN=0
+  REMAIN=$((END - NOW))
+  ((REMAIN < 0)) && REMAIN=0
 
   # Threshold notifications
   for t in "${thresholds[@]}"; do
-    if (( TOTAL_DELAY >= t )) && (( REMAIN == t )) && (( fired[$t] == 0 )); then
+    if ((TOTAL_DELAY >= t)) && ((REMAIN == t)) && ((fired[$t] == 0)); then
       case "$t" in
-        1800) notify "30 minutes remaining" "Action: $MODE";;
-        600)  notify "10 minutes remaining" "Action: $MODE";;
-        180)  notify "3 minutes remaining"  "Action: $MODE — press ${CANCEL_HINT} to cancel";;
-        60)   notify "1 minute remaining"   "Action: $MODE — press ${CANCEL_HINT} to cancel";;
-        15)   notify "15 seconds remaining" "Action: $MODE — press ${CANCEL_HINT} to cancel";;
+      1800) notify "30 minutes remaining" "Action: $MODE" ;;
+      600) notify "10 minutes remaining" "Action: $MODE" ;;
+      180) notify "3 minutes remaining" "Action: $MODE — press ${CANCEL_HINT} to cancel" ;;
+      60) notify "1 minute remaining" "Action: $MODE — press ${CANCEL_HINT} to cancel" ;;
+      15) notify "15 seconds remaining" "Action: $MODE — press ${CANCEL_HINT} to cancel" ;;
       esac
       fired[$t]=1
     fi
   done
 
   # Final 10s warning (always)
-  if (( REMAIN == 10 )); then
+  if ((REMAIN == 10)); then
     notify_final "Final warning: 10s" "Executing $MODE in 10 seconds."
   fi
 
   # Render countdown
-  h=$(( REMAIN / 3600 ))
-  m=$(( (REMAIN % 3600) / 60 ))
-  s=$(( REMAIN % 60 ))
+  h=$((REMAIN / 3600))
+  m=$(((REMAIN % 3600) / 60))
+  s=$((REMAIN % 60))
   progress_line "$h" "$m" "$s"
 
   # Exit condition
-  if (( REMAIN == 0 )); then
+  if ((REMAIN == 0)); then
     # If session is idle and we have not extended yet, add +5 minutes once.
     if $IDLE_SUPPORTED && ! $EXTENDED_ON_IDLE; then
       HINT="$(idle_hint)"
       if [ "$HINT" = "yes" ]; then
         EXTENDED_ON_IDLE=true
-        END=$(( $(date +%s) + 300 ))
-        say; say "Timer expired during idle; adding +5 minutes."
+        END=$(($(date +%s) + 300))
+        say
+        say "Timer expired during idle; adding +5 minutes."
         notify "Idle detected" "Timer expired during idle. Added +5 minutes before $MODE."
         sleep 1
         continue
