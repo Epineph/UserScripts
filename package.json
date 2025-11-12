@@ -1,0 +1,46 @@
+{
+  "dependencies": {
+    "@actions/http-client": "^3.0.0",
+    "@playwright/browser-chromium": "^1.56.1",
+    "@types/http-cache-semantics": "^4.0.4",
+    "axe-core": "^4.11.0",
+    "dns": "^0.2.2",
+    "exec-sh": "^0.4.0",
+    "geo": "^0.0.3",
+    "global": "^4.4.0",
+    "http-call": "^5.3.0",
+    "http-deceiver": "^1.2.7",
+    "http-errors": "^2.0.0",
+    "http-headers": "^3.0.2",
+    "http-parser-js": "^0.5.10",
+    "http-proxy-agent": "^7.0.2",
+    "http-reasons": "^0.1.0",
+    "http-status": "^2.1.0",
+    "prettier-plugin-sh": "^0.17.4",
+    "sh-syntax": "^0.5.8",
+    "tls": "^0.0.1",
+    "wappalyzer-cli": "^1.0.0",
+    "wappalyzer-puppeteer": "^0.1.1",
+    "wappalyzer-wrapper": "^4.4.7"
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "name": "userscripts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "log-net.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Epineph/UserScripts.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Epineph/UserScripts/issues"
+  },
+  "homepage": "https://github.com/Epineph/UserScripts#readme"
+}

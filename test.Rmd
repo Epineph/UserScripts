@@ -1,0 +1,444 @@
+---
+title: "Custom R-function to load and install missing packages"
+output: html_document
+date: "2025-09-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# R User-Function to install and load missing packages
+
+
+```{r}
+
+# ---------- Utilities ----------
+
+#' Is package installed (by name)?
+is_installed <- function(pkg) {
+  # Fast membership check using installed.packages cache:
+  pkg %in% .installed_cache()
+}
+
+.installed_cache <- local({
+  cache <- NULL
+  function(refresh = FALSE) {
+    if (is.null(cache) || isTRUE(refresh)) {
+      cache <<- rownames(installed.packages(noCache = TRUE))
+    }
+    cache
+  }
+})
+
+#' Run expression quietly, discarding stdout + stderr (to /dev/null or NUL)
+run_quietly <- function(expr) {
+  nullfile <- if (.Platform$OS.type == "windows") "NUL" else "/dev/null"
+  zz_out <- file(nullfile, open = "wt")
+  zz_msg <- file(nullfile, open = "wt")
+  sink(zz_out)
+  sink(zz_msg, type = "message")
+  on.exit({
+    try(sink(), silent = TRUE)
+    try(sink(type = "message"), silent = TRUE)
+    close(zz_out); close(zz_msg)
+  }, add = TRUE)
+  force(expr)
+}
+
+#' Safe require/library
+safe_library <- function(pkg) {
+  ok <- FALSE
+  err <- NULL
+  res <- tryCatch({
+    suppressPackageStartupMessages(suppressWarnings(
+      library(pkg, character.only = TRUE, quietly = TRUE)
+    ))
+    TRUE
+  }, error = function(e) { err <<- e; FALSE })
+  list(ok = res, error = err)
+}
+
+#' Ensure we have a CRAN repo set
+ensure_cran_repos <- function() {
+  repos <- getOption("repos")
+  if (is.null(repos) || length(repos) == 0L || isTRUE(repos["CRAN"] == "@CRAN@")) {
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
+  }
+}
+
+# ---------- Spec parsing ----------
+
+# Normalize a single character spec into a list {source, pkg, repo, ref}
+# Rules:
+#   - "cran:pkg" or plain "pkg" => source="cran", pkg="pkg"
+#   - "bioc:Pkg"                => source="bioc", pkg="Pkg"
+#   - "github:owner/repo[@ref]" / "gh:owner/repo[@ref]" / "owner/repo[@ref]" => source="github"
+parse_one_spec <- function(x) {
+  stopifnot(is.character(x), length(x) == 1L)
+  x <- trimws(x)
+
+  if (grepl("^cran:", x, ignore.case = TRUE)) {
+    pkg <- sub("^cran:", "", x, ignore.case = TRUE)
+    return(list(source = "cran", pkg = pkg))
+  }
+
+  if (grepl("^bioc:", x, ignore.case = TRUE)) {
+    pkg <- sub("^bioc:", "", x, ignore.case = TRUE)
+    return(list(source = "bioc", pkg = pkg))
+  }
+
+  if (grepl("^(github|gh):", x, ignore.case = TRUE)) {
+    repo <- sub("^(github|gh):", "", x, ignore.case = TRUE)
+    parts <- strsplit(repo, "@", fixed = TRUE)[[1]]
+    repo <- parts[1]
+    ref  <- if (length(parts) > 1) parts[2] else NULL
+    pkg  <- basename(repo)
+    return(list(source = "github", pkg = pkg, repo = repo, ref = ref))
+  }
+
+  # Heuristic: owner/repo => GitHub
+  if (grepl("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(@[A-Za-z0-9_.-]+)?$", x)) {
+    parts <- strsplit(x, "@", fixed = TRUE)[[1]]
+    repo <- parts[1]
+    ref  <- if (length(parts) > 1) parts[2] else NULL
+    pkg  <- basename(repo)
+    return(list(source = "github", pkg = pkg, repo = repo, ref = ref))
+  }
+
+  # Fallback: plain CRAN name
+  list(source = "cran", pkg = x)
+}
+
+# Vectorized parse
+parse_specs <- function(pkgs) {
+  if (!length(pkgs)) return(list())
+  lapply(pkgs, parse_one_spec)
+}
+
+# ---------- Installers ----------
+
+install_cran <- function(pkg, dependencies, quiet) {
+  ensure_cran_repos()
+  nullrun <- if (quiet) run_quietly else identity
+  nullrun(install.packages(pkg,
+                           dependencies = dependencies,
+                           quiet = quiet,
+                           Ncpus = max(1L, getOption("Ncpus", 1L))))
+}
+
+ensure_installer <- function(which = c("remotes", "devtools"), quiet = TRUE) {
+  which <- match.arg(which)
+  if (!is_installed(which)) {
+    install_cran(which, dependencies = TRUE, quiet = quiet)
+    .installed_cache(refresh = TRUE)
+  }
+}
+
+install_github_remotes <- function(repo, dependencies, ref = NULL, quiet = TRUE) {
+  ensure_installer("remotes", quiet = quiet)
+  args <- list(repo = repo, dependencies = dependencies, upgrade = "never", quiet = quiet)
+  if (!is.null(ref)) args$ref <- ref
+  f <- get("install_github", envir = asNamespace("remotes"))
+  (if (quiet) run_quietly else identity)(do.call(f, args))
+}
+
+install_github_devtools <- function(repo, dependencies, ref = NULL, quiet = TRUE) {
+  ensure_installer("devtools", quiet = quiet)
+  args <- list(repo = repo, dependencies = dependencies, upgrade = "never", quiet = quiet)
+  if (!is.null(ref)) args$ref <- ref
+  f <- get("install_github", envir = asNamespace("devtools"))
+  (if (quiet) run_quietly else identity)(do.call(f, args))
+}
+
+install_bioc <- function(pkg, dependencies, quiet = TRUE) {
+  # Bioconductor optional: only if user requests 'bioc:' prefix.
+  if (!is_installed("BiocManager")) {
+    install_cran("BiocManager", dependencies = TRUE, quiet = quiet)
+    .installed_cache(refresh = TRUE)
+  }
+  f <- get("install", envir = asNamespace("BiocManager"))
+  (if (quiet) run_quietly else identity)(f(pkg, dependencies = dependencies, ask = FALSE, update = FALSE))
+}
+
+# ---------- Core API ----------
+
+#' smart_install
+#'
+#' @param pkgs character vector of package specs (see header)
+#' @param dependencies TRUE (default), FALSE, NA, or character vector like c("Depends","Suggests")
+#' @param load logical: library() attach after installation (default TRUE)
+#' @param install_github_via "remotes" (default) or "devtools"
+#' @param quiet logical: suppress output where possible (default TRUE)
+#' @param prefer_github_if_both logical: if TRUE and both CRAN and GitHub versions are installed/available,
+#'        prefer GitHub install. Default FALSE (CRAN stability first).
+#' @return list with components: installed_new, already_installed, loaded, failed_install, failed_load, not_found
+smart_install <- function(pkgs,
+                          dependencies = TRUE,
+                          load = TRUE,
+                          install_github_via = c("remotes", "devtools"),
+                          quiet = TRUE,
+                          prefer_github_if_both = FALSE) {
+  stopifnot(is.character(pkgs) || is.list(pkgs))
+  specs <- if (is.character(pkgs)) parse_specs(pkgs) else lapply(pkgs, parse_one_spec)
+
+  install_github_via <- match.arg(install_github_via)
+
+  installed_new     <- character()
+  already_installed <- character()
+  loaded_ok         <- character()
+  failed_install    <- character()
+  failed_load       <- character()
+  not_found         <- character()
+
+  # Processing
+  for (sp in specs) {
+    src <- sp$source
+    pkg <- sp$pkg
+
+    # Decide if already installed
+    if (is_installed(pkg)) {
+      already_installed <- c(already_installed, pkg)
+      # Optionally re-install from GitHub if requested preference
+      do_install <- FALSE
+      if (src == "github" && isTRUE(prefer_github_if_both)) do_install <- TRUE
+    } else {
+      do_install <- TRUE
+    }
+
+    if (isTRUE(do_install)) {
+      ok <- TRUE
+      err <- NULL
+      tryCatch({
+        if (src == "cran") {
+          install_cran(pkg, dependencies = dependencies, quiet = quiet)
+        } else if (src == "github") {
+          if (identical(install_github_via, "remotes")) {
+            install_github_remotes(sp$repo, dependencies = dependencies, ref = sp$ref, quiet = quiet)
+          } else {
+            install_github_devtools(sp$repo, dependencies = dependencies, ref = sp$ref, quiet = quiet)
+          }
+        } else if (src == "bioc") {
+          install_bioc(pkg, dependencies = dependencies, quiet = quiet)
+        } else {
+          stop("Unknown source: ", src)
+        }
+      }, error = function(e) { ok <<- FALSE; err <<- e })
+
+      # Refresh installed cache after install attempt
+      .installed_cache(refresh = TRUE)
+
+      if (ok && is_installed(pkg)) {
+        installed_new <- c(installed_new, pkg)
+      } else {
+        failed_install <- c(failed_install, pkg)
+        # If the package truly isn't installed, classify as not_found (likely typo)
+        if (!is_installed(pkg)) not_found <- c(not_found, pkg)
+        # Continue to next package; loading makes no sense here
+        next
+      }
+    }
+
+    # Load if requested
+    if (isTRUE(load)) {
+      res <- safe_library(pkg)
+      if (isTRUE(res$ok)) {
+        loaded_ok <- c(loaded_ok, pkg)
+      } else {
+        failed_load <- c(failed_load, pkg)
+      }
+    }
+  }
+
+  # Deduplicate & sort for readability
+  uniq_sort <- function(x) sort(unique(x))
+  result <- list(
+    installed_new     = uniq_sort(installed_new),
+    already_installed = uniq_sort(already_installed),
+    loaded            = uniq_sort(loaded_ok),
+    failed_install    = uniq_sort(failed_install),
+    failed_load       = uniq_sort(failed_load),
+    not_found         = uniq_sort(setdiff(not_found, loaded_ok))
+  )
+
+  # Human-readable summary
+  summarize <- function(lbl, xs) {
+    if (!length(xs)) sprintf("%s: none", lbl) else sprintf("%s (%d): %s", lbl, length(xs), paste(xs, collapse = ", "))
+  }
+  message(summarize("Installed (new)",    result$installed_new))
+  message(summarize("Already installed",  result$already_installed))
+  message(summarize("Loaded",             result$loaded))
+  if (length(result$failed_install)) message(summarize("Failed to install", result$failed_install))
+  if (length(result$failed_load))    message(summarize("Failed to load",    result$failed_load))
+  if (length(result$not_found))      message(summarize("Not found (typo?)", result$not_found))
+
+  invisible(result)
+}
+```
+
+# Usage examples
+
+## 1) Minimal CRAN usage (defaults: dependencies = TRUE, load after install)
+
+```{r}
+# Basic: install+load from CRAN, idempotent if already present.
+res1 <- smart_install(c("data.table", "ggplot2"))
+str(res1, max.level = 1)
+
+```
+
+## 2) Mixed sources: CRAN + GitHub (via remotes) with explicit dependency set
+
+```{r}
+# Mix CRAN and GitHub, install GitHub via 'remotes', and include Suggests.
+pkgs2 <- c(
+  "dplyr",                  # CRAN (plain)
+  "cran:readr",             # CRAN (explicit tag)
+  "gh:r-lib/usethis",       # GitHub (gh: prefix)
+  "r-lib/pkgcache@v2.1.6"   # GitHub with ref (owner/repo@tag/branch/sha)
+)
+
+res2 <- smart_install(
+  pkgs2,
+  dependencies = c("Depends", "Imports", "Suggests"),
+  install_github_via = "remotes",
+  quiet = TRUE
+)
+
+# Inspect outcome programmatically:
+list(
+  newly_installed = res2$installed_new,
+  loaded          = res2$loaded,
+  failed_install  = res2$failed_install,
+  not_found       = res2$not_found
+)
+
+```
+
+## 3) Bioconductor package(s)
+
+```{r}
+# Only triggers BiocManager when 'bioc:' prefix is used.
+res3 <- smart_install(c("bioc:BiocGenerics", "bioc:IRanges"))
+res3$installed_new
+
+```
+
+## 4) Prefer GitHub build when both CRAN and GitHub are viable
+```{r}
+# If a package exists on CRAN *and* GitHub, force GitHub build preference.
+res4 <- smart_install(
+  c("gh:tidyverse/readr"),      # or "tidyverse/readr"
+  prefer_github_if_both = TRUE, # will reinstall from GitHub if CRAN already present
+  quiet = FALSE                 # show logs to verify source
+)
+res4$installed_new
+
+```
+
+## 5) No-load mode, then attach selectively
+
+```{r}
+# Install without attaching; later attach a strict subset.
+res5 <- smart_install(
+  c("data.table", "r-lib/rlang"),
+  load = FALSE
+)
+
+# Attach only what you need:
+suppressPackageStartupMessages(library(data.table))
+# Use requireNamespace() when you just need functions without attaching:
+if (requireNamespace("rlang", quietly = TRUE)) {
+  rlang::inform("rlang available without attaching.")
+}
+
+```
+
+## 6) Handling typos or unavailable packages without halting
+
+```{r}
+# Intentionally include a typo to demonstrate non-fatal behavior.
+res6 <- smart_install(c("dbplyr", "data.tabel", "gh:r-lib/cli"))
+res6$not_found          # likely contains "data.tabel"
+res6$failed_install     # packages that errored during install
+res6$failed_load        # installed but couldn't be loaded
+
+```
+
+## 7) Reproducible installs with pinned refs and controlled verbosity
+
+```{r}
+# Quieter installs inside Rmd; pin refs to stabilize results.
+pkgs7 <- c(
+  "gh:r-lib/usethis@v3.0.0",
+  "gh:r-lib/cli@3.6.3",
+  "readxl"  # CRAN
+)
+
+res7 <- smart_install(
+  pkgs7,
+  dependencies = TRUE,
+  install_github_via = "remotes",
+  quiet = TRUE
+)
+
+# Compact summary table for the knitted document:
+data.frame(
+  category = c("installed_new", "already_installed", "loaded",
+               "failed_install", "failed_load", "not_found"),
+  value = I(list(
+    res7$installed_new, res7$already_installed, res7$loaded,
+    res7$failed_install, res7$failed_load, res7$not_found
+  ))
+)
+```
+
+# Examples
+
+## Example 1.
+
+```{r}
+# A typical project set (mix CRAN/GitHub/Bioc) with informative logs.
+project_pkgs <- c(
+  "tidyverse",
+  "data.table",
+  "janitor",
+  "gh:hadley/emo",        # GitHub
+  "bioc:Biostrings"       # Bioconductor
+)
+
+res_boot <- smart_install(
+  project_pkgs,
+  dependencies = c("Depends", "Imports"),
+  install_github_via = "remotes",
+  quiet = FALSE
+)
+
+# Fail-fast assertion example (optional):
+if (length(res_boot$failed_install) || length(res_boot$not_found)) {
+  warning(sprintf(
+    "Some packages failed or were not found: %s",
+    paste(c(res_boot$failed_install, res_boot$not_found), collapse = ", ")
+  ))
+}
+
+```
+
+## Example 2
+
+```{r}
+specs <- c(
+  "cran:arrow",
+  "gh:tidyverse/dplyr",
+  "bioc:GenomicRanges"
+)
+
+res_cfg <- smart_install(
+  specs,
+  dependencies = TRUE,
+  quiet = FALSE   # <- this shows all the usual install.packages/devtools messages
+)
+
+res_cfg$loaded
+```
+

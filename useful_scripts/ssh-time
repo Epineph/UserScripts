@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Function to display usage instructions
+usage() {
+    echo "Usage: $0 [-s | --seconds N] [-m | --minutes N] [-h | --hours N] [--key /path/to/key]"
+    echo "Provide at least one of the options to specify time. The key path is optional and defaults to $HOME/.ssh/id_rsa."
+    exit 1
+}
+
+# Initialize variables
+seconds=0
+minutes=0
+hours=0
+key_path="$HOME/.ssh/id_rsa"
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -s|--seconds)
+            seconds=$2
+            shift 2
+            ;;
+        -m|--minutes)
+            minutes=$2
+            shift 2
+            ;;
+        -h|--hours)
+            hours=$2
+            shift 2
+            ;;
+        --key)
+            key_path=$2
+            shift 2
+            ;;
+        *)
+            usage
+            ;;
+    esac
+done
+
+# Validate inputs
+if [[ $seconds -eq 0 && $minutes -eq 0 && $hours -eq 0 ]]; then
+    usage
+fi
+
+# Calculate total time in seconds
+total_seconds=$((seconds + minutes * 60 + hours * 3600))
+
+# Function to format and print time
+format_time() {
+    local total_seconds=$1
+
+    if (( total_seconds < 60 )); then
+        printf "Time: %d seconds (%.2f minutes)\n" "$total_seconds" "$(bc -l <<< "$total_seconds / 60")"
+    elif (( total_seconds < 3600 )); then
+        local minutes=$((total_seconds / 60))
+        local remaining_seconds=$((total_seconds % 60))
+        printf "Time: %d minutes, %d seconds (%.2f hours)\n" "$minutes" "$remaining_seconds" "$(bc -l <<< "$total_seconds / 3600")"
+    else
+        local hours=$((total_seconds / 3600))
+        local remaining_minutes=$(( (total_seconds % 3600) / 60 ))
+        local remaining_seconds=$((total_seconds % 60))
+        printf "Time: %d hours, %d minutes, %d seconds\n" "$hours" "$remaining_minutes" "$remaining_seconds"
+    fi
+}
+
+# Start the ssh-agent and add the key with the timeout
+eval "$(ssh-agent -s)"
+ssh-add -t "$total_seconds" "$key_path"
+
+# Format and display the time
+format_time "$total_seconds"
+

@@ -1,0 +1,45 @@
+{
+  "cookies": [
+    {
+      "name": "PHPSESSID",
+      "value": "8221nsaop0r5ocg5b1ghke28q2",
+      "domain": "dm12388.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "pe_language",
+      "value": "en",
+      "domain": "dm12388.com",
+      "path": "/",
+      "expires": 1794441437.358843,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "user_tz",
+      "value": "Europe%2FCopenhagen",
+      "domain": "dm12388.com",
+      "path": "/",
+      "expires": 1794441436,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "user_utc_offset",
+      "value": "60",
+      "domain": "dm12388.com",
+      "path": "/",
+      "expires": 1794441436,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}

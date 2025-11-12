@@ -1,0 +1,26 @@
+{
+  "final_url": "https://dm12388.com/",
+  "status": 200,
+  "headers": {
+    "Date": "Fri, 07 Nov 2025 20:32:23 GMT",
+    "Content-Type": "text/html; charset=utf-8",
+    "Connection": "keep-alive",
+    "Server": "cloudflare",
+    "vary": "Accept-Encoding",
+    "expires": "Thu, 19 Nov 1981 08:52:00 GMT",
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+    "pragma": "no-cache",
+    "strict-transport-security": "max-age=31536000",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "cf-cache-status": "DYNAMIC",
+    "Report-To": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=Ux7JwrFXFau22ZxujY3Ba17oFv%2BPQYVw5szTXyg6WFpWS9oaXEbEx5AvpjkwfI4pcnhbwgqXlEyWwpgTMG3j%2F60m7xs4RH%2FBKg%3D%3D\"}]}",
+    "Content-Encoding": "zstd",
+    "Set-Cookie": "PHPSESSID=8oih7m62r64n6ea8rj8jc6d5a6; HttpOnly; Path=/, pe_language=en; Path=/; Max-Age=31536000; Expires=Sat, 07 Nov 2026 20:32:22 GMT",
+    "CF-RAY": "99af997bb9b88f63-CPH"
+  },
+  "set_cookie": [
+    "PHPSESSID=8oih7m62r64n6ea8rj8jc6d5a6; HttpOnly; Path=/",
+    "pe_language=en; Path=/; Max-Age=31536000; Expires=Sat, 07 Nov 2026 20:32:22 GMT"
+  ]
+}

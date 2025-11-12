@@ -1,0 +1,113 @@
+---
+title: "Dynamic LaTeX Handcalc in RMarkdown"
+output: html_document
+---
+
+This document demonstrates a lightweight "handcalc-style" pattern in RMarkdown
+that renders LaTeX from an expression and a set of variable values. It does not
+require a symbolic engine; instead it uses simple string templating to produce
+the LaTeX substitution step, and evaluates the numeric value directly in R.
+
+> Knit to **HTML** for MathJax rendering of the equations.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressPackageStartupMessages({
+  library(glue)
+  library(stringr)
+})
+```
+
+## Helper: `handcalc_latex()`
+
+`handcalc_latex()` takes an expression and named values, renders three lines:
+
+1. Symbolic formula (`symbol = expression` in LaTeX).
+2. Substitution with numeric values.
+3. Numeric evaluation (approximate).
+
+```{r}
+handcalc_latex <- function(expr, values, symbol = "y", digits = 6, latex_template = NULL) {
+  # expr: R expression or string, e.g., quote(a*b/c + sin(theta)) or "a*b/c + sin(theta)"
+  # values: named list, e.g., list(a=3, b=4, c=2, theta=0.2)
+  # symbol: output variable name shown in equations
+  # digits: significant digits for numeric printout
+  # latex_template: LaTeX string for the expression (optional). If NULL, a naive conversion is attempted.
+  
+  # Build an environment with provided values to evaluate expr
+  env <- list2env(values, parent = emptyenv())
+  if (is.character(expr)) expr <- str2lang(expr)
+  
+  # Numeric value
+  numeric_value <- eval(expr, envir = env)
+  
+  # Basic formatter
+  fmt <- function(x) {
+    if (is.numeric(x)) {
+      formatC(x, digits = digits, format = "g")
+    } else {
+      as.character(x)
+    }
+  }
+  
+  # Optional LaTeX template; otherwise perform a simple translation from R syntax.
+  if (is.null(latex_template)) {
+    # This is intentionally simple; tailor as needed for your syntax.
+    # Convert the expression to a string and map a few common tokens to LaTeX.
+    base_str <- deparse(expr)
+    base_str <- str_replace_all(base_str, fixed("*"), "\\cdot ")
+    base_str <- str_replace_all(base_str, "sin\(", "\\sin(")
+    base_str <- str_replace_all(base_str, "cos\(", "\\cos(")
+    base_str <- str_replace_all(base_str, "tan\(", "\\tan(")
+    base_str <- str_replace_all(base_str, "/", "\\over ")
+    latex_template <- base_str
+  }
+  
+  # Substitution step: replace variable names in latex_template with their numeric values
+  subs <- latex_template
+  for (nm in names(values)) {
+    # word boundary replacement to avoid partial matches (best-effort for simple names)
+    subs <- str_replace_all(subs, paste0("\\b", nm, "\\b"), fmt(values[[nm]]))
+  }
+  
+  # Also show a compact list of assignments a=..., b=..., etc.
+  assignments <- paste(paste0(names(values), "=", vapply(values, fmt, character(1))), collapse = ",\; ")
+  
+  # Emit LaTeX lines as raw (asis) so MathJax can render them
+  out <- c(
+    glue("$${symbol} = {latex_template}$$"),
+    glue("$$\\text{with } {assignments}$$"),
+    glue("$${symbol} = {subs}$$"),
+    glue("$${symbol} \\approx {fmt(numeric_value)}$$")
+  )
+  knitr::asis_output(paste(out, collapse = "\n\n"))
+}
+```
+
+## Example 1 — Mixed algebraic + trigonometric
+
+```{r, results='asis'}
+values <- list(a = 3.0, b = 4.0, c = 2.0, theta = 0.2)
+handcalc_latex(
+  expr = quote(a*b/c + sin(theta)),
+  values = values,
+  symbol = "z",
+  digits = 8,
+  latex_template = "\\frac{a b}{c} + \\sin(\\theta)"
+)
+```
+
+## Example 2 — Kinematics
+
+```{r, results='asis'}
+values2 <- list(v0 = 12.5, acc = -9.81, t = 1.8)
+handcalc_latex(
+  expr = quote(v0*t + (acc * t^2) / 2),
+  values = values2,
+  symbol = "s",
+  digits = 6,
+  latex_template = "v_0 t + \\frac{1}{2} a t^{2}"
+)
+```
+
+*Note:* For more complex expressions, supply a `latex_template` directly to control layout (fractions, roots, etc.).
