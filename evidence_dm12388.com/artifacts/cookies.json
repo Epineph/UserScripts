@@ -1,7 +1,7 @@
 [
   {
     "name": "PHPSESSID",
-    "value": "8221nsaop0r5ocg5b1ghke28q2",
+    "value": "cs568p5k5cjh0hduj5bv1n39k3",
     "domain": "dm12388.com",
     "path": "/",
     "expires": -1,
@@ -14,7 +14,7 @@
     "value": "en",
     "domain": "dm12388.com",
     "path": "/",
-    "expires": 1794441437.358843,
+    "expires": 1794446343.99962,
     "httpOnly": false,
     "secure": false,
     "sameSite": "Lax"
@@ -24,7 +24,7 @@
     "value": "Europe%2FCopenhagen",
     "domain": "dm12388.com",
     "path": "/",
-    "expires": 1794441436,
+    "expires": 1794446343,
     "httpOnly": false,
     "secure": false,
     "sameSite": "Lax"
@@ -34,7 +34,7 @@
     "value": "60",
     "domain": "dm12388.com",
     "path": "/",
-    "expires": 1794441436,
+    "expires": 1794446343,
     "httpOnly": false,
     "secure": false,
     "sameSite": "Lax"
