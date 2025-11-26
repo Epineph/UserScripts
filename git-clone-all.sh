@@ -306,8 +306,8 @@ repos=(
 	"nvidia-304 https://github.com/flydiscohuebr/nvidia-304.git"
 	"nvidia-340xx https://github.com/MichelBoucey/nvidia-340xx.git"
 	"PKGBUILDS https://github.com/Martchus/PKGBUILDs.git"
-  "functions-resources https://github.com/do-community/function-resources.git"
-  "falco https://github.com/falcosecurity/falco.git"
+	"functions-resources https://github.com/do-community/function-resources.git"
+	"falco https://github.com/falcosecurity/falco.git"
 )
 
 function normalize_url() {
@@ -321,7 +321,7 @@ function normalize_url() {
 }
 
 declare -A seen_by_url=() # canonical_url -> first_name
-repo_dir="/home/heini/repos"
+repo_dir="/shared"
 mkdir -p "$repo_dir"
 
 echo "PATH is: $PATH"
