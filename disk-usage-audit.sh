@@ -27,10 +27,10 @@ DO_BY_EXT=1         # aggregate by file extension
 CSV_SEP=","         # CSV separator for extension summary
 # Filesystem types excluded by default (ephemeral/virtual)
 DEFAULT_EXCLUDED_FSTYPES=(
-	"autofs" "bpf" "cgroup" "cgroup2" "configfs" "debugfs" "devpts"
-	"devtmpfs" "efivarfs" "fusectl" "hugetlbfs" "mqueue" "overlay"
-	"proc" "pstore" "ramfs" "securityfs" "squashfs" "sysfs" "tmpfs"
-	"tracefs" "zram"
+  "autofs" "bpf" "cgroup" "cgroup2" "configfs" "debugfs" "devpts"
+  "devtmpfs" "efivarfs" "fusectl" "hugetlbfs" "mqueue" "overlay"
+  "proc" "pstore" "ramfs" "securityfs" "squashfs" "sysfs" "tmpfs"
+  "tracefs" "zram"
 )
 # Remote/network FS types (excluded unless --include-remote)
 REMOTE_FSTYPES=("nfs" "nfs4" "cifs" "smb3" "sshfs" "9p" "glusterfs")
@@ -42,29 +42,29 @@ function _have() { command -v "$1" >/dev/null 2>&1; }
 
 # Your preferred bat options (fallback to cat)
 BAT_OPTS=(
-	--style="grid,header,snip"
-	--italic-text="always"
-	--theme="gruvbox-dark"
-	--squeeze-blank
-	--squeeze-limit="2"
-	--terminal-width="-1"
-	--tabs="2"
-	--paging="never"
-	--chop-long-lines
+  --style="grid,header,snip"
+  --italic-text="always"
+  --theme="gruvbox-dark"
+  --squeeze-blank
+  --squeeze-limit="2"
+  --terminal-width="-1"
+  --tabs="2"
+  --paging="never"
+  --chop-long-lines
 )
 
 function show_help() {
-	local viewer="cat"
-	if _have helpout; then
-		viewer="helpout"
-	elif _have batwrap; then
-		viewer="batwrap"
-	elif _have bat; then
-		viewer="bat"
-	fi
+  local viewer="cat"
+  if _have helpout; then
+    viewer="helpout"
+  elif _have batwrap; then
+    viewer="batwrap"
+  elif _have bat; then
+    viewer="bat"
+  fi
 
-	if [[ "${viewer}" == "bat" ]]; then
-		cat <<'EOF' | bat "${BAT_OPTS[@]}" -l markdown
+  if [[ ${viewer} == "bat" ]]; then
+    cat <<'EOF' | bat "${BAT_OPTS[@]}" -l markdown
 # disk-usage-audit — Comprehensive disk usage report
 
 ## Synopsis
@@ -122,308 +122,308 @@ disk-usage-audit [options]
 - Re-run with `--sudo` or as root to reduce permission denials.
 
 EOF
-	else
-		cat <<'EOF' | "${viewer}"
+  else
+    cat <<'EOF' | "${viewer}"
 # disk-usage-audit — Comprehensive disk usage report
 Use --help for full Markdown help (bat/helpout/cat fallback).
 EOF
-	fi
+  fi
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Utility: logging and humanization
 # ──────────────────────────────────────────────────────────────────────────────
-function logi() { [[ "$QUIET" -eq 0 ]] && printf '%s\n' "$*"; }
+function logi() { [[ $QUIET -eq 0 ]] && printf '%s\n' "$*"; }
 function loge() { printf 'ERR: %s\n' "$*" >&2; }
 
 function humanize() {
-	if _have numfmt; then
-		numfmt --to=iec --suffix=B --format="%.1f" 2>/dev/null || cat
-	else
-		cat
-	fi
+  if _have numfmt; then
+    numfmt --to=iec --suffix=B --format="%.1f" 2>/dev/null || cat
+  else
+    cat
+  fi
 }
 
 # CSV splitter → NUL-delimited stream for safe parsing
 function split_csv() {
-	local IFS=','
-	read -r -a _out <<<"$1"
-	printf '%s\0' "${_out[@]}"
+  local IFS=','
+  read -r -a _out <<<"$1"
+  printf '%s\0' "${_out[@]}"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Argument parsing (supports long opts)
 # ──────────────────────────────────────────────────────────────────────────────
 function parse_args() {
-	while (("$#")); do
-		case "$1" in
-		-h | --help)
-			show_help
-			exit 0
-			;;
-		-q | --quiet)
-			QUIET=1
-			shift
-			;;
-		-o | --output)
-			OUTDIR="$2"
-			shift 2
-			;;
-		-p | --paths)
-			CUSTOM_PATHS="${2:-}"
-			shift 2
-			;;
-		-d | --depth)
-			DEPTH="${2:-2}"
-			shift 2
-			;;
-		-n | --top)
-			TOPN="${2:-25}"
-			shift 2
-			;;
-		-m | --min-file-size)
-			MIN_FILE_SIZE="${2:-50M}"
-			shift 2
-			;;
-		-X | --exclude)
-			EXCLUDES="${2:-}"
-			shift 2
-			;;
-		--sudo)
-			USE_SUDO=1
-			shift
-			;;
-		--include-remote)
-			INCLUDE_REMOTE=1
-			shift
-			;;
-		--no-reports)
-			WRITE_REPORTS=0
-			shift
-			;;
-		--no-per-user)
-			DO_PER_USER=0
-			shift
-			;;
-		--no-by-ext)
-			DO_BY_EXT=0
-			shift
-			;;
-		--)
-			shift
-			break
-			;;
-		-*)
-			loge "Unknown option: $1"
-			exit 2
-			;;
-		*)
-			shift
-			;;
-		esac
-	done
+  while (("$#")); do
+    case "$1" in
+      -h | --help)
+        show_help
+        exit 0
+        ;;
+      -q | --quiet)
+        QUIET=1
+        shift
+        ;;
+      -o | --output)
+        OUTDIR="$2"
+        shift 2
+        ;;
+      -p | --paths)
+        CUSTOM_PATHS="${2:-}"
+        shift 2
+        ;;
+      -d | --depth)
+        DEPTH="${2:-2}"
+        shift 2
+        ;;
+      -n | --top)
+        TOPN="${2:-25}"
+        shift 2
+        ;;
+      -m | --min-file-size)
+        MIN_FILE_SIZE="${2:-50M}"
+        shift 2
+        ;;
+      -X | --exclude)
+        EXCLUDES="${2:-}"
+        shift 2
+        ;;
+      --sudo)
+        USE_SUDO=1
+        shift
+        ;;
+      --include-remote)
+        INCLUDE_REMOTE=1
+        shift
+        ;;
+      --no-reports)
+        WRITE_REPORTS=0
+        shift
+        ;;
+      --no-per-user)
+        DO_PER_USER=0
+        shift
+        ;;
+      --no-by-ext)
+        DO_BY_EXT=0
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        loge "Unknown option: $1"
+        exit 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Mountpoint detection & filtering
 # ──────────────────────────────────────────────────────────────────────────────
 function is_in_list() {
-	local x="$1"
-	shift
-	local y
-	for y in "$@"; do [[ "$x" == "$y" ]] && return 0; done
-	return 1
+  local x="$1"
+  shift
+  local y
+  for y in "$@"; do [[ $x == "$y" ]] && return 0; done
+  return 1
 }
 
 function collect_mountpoints() {
-	local -a excludes=("${DEFAULT_EXCLUDED_FSTYPES[@]}")
-	local -a remote=("${REMOTE_FSTYPES[@]}")
-	local line dev mnt fstype
-	local -a mounts=()
+  local -a excludes=("${DEFAULT_EXCLUDED_FSTYPES[@]}")
+  local -a remote=("${REMOTE_FSTYPES[@]}")
+  local line dev mnt fstype
+  local -a mounts=()
 
-	while read -r line; do
-		dev="$(awk '{print $1}' <<<"$line")"
-		mnt="$(awk '{print $2}' <<<"$line")"
-		fstype="$(awk '{print $3}' <<<"$line")"
+  while read -r line; do
+    dev="$(awk '{print $1}' <<<"$line")"
+    mnt="$(awk '{print $2}' <<<"$line")"
+    fstype="$(awk '{print $3}' <<<"$line")"
 
-		[[ "$mnt" != /* ]] && continue
-		if is_in_list "$fstype" "${excludes[@]}"; then continue; fi
-		if [[ "$INCLUDE_REMOTE" -eq 0 ]] && is_in_list "$fstype" "${remote[@]}"; then
-			continue
-		fi
-		if [[ ! " ${mounts[*]-} " =~ " ${mnt} " ]]; then
-			mounts+=("$mnt")
-		fi
-	done </proc/self/mounts
+    [[ $mnt != /* ]] && continue
+    if is_in_list "$fstype" "${excludes[@]}"; then continue; fi
+    if [[ $INCLUDE_REMOTE -eq 0 ]] && is_in_list "$fstype" "${remote[@]}"; then
+      continue
+    fi
+    if [[ ! " ${mounts[*]-} " =~ " ${mnt} " ]]; then
+      mounts+=("$mnt")
+    fi
+  done </proc/self/mounts
 
-	printf '%s\n' "${mounts[@]}"
+  printf '%s\n' "${mounts[@]}"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Build scan roots and options
 # ──────────────────────────────────────────────────────────────────────────────
 function build_roots() {
-	if [[ -n "${CUSTOM_PATHS}" ]]; then
-		mapfile -d '' roots < <(split_csv "${CUSTOM_PATHS}")
-	else
-		mapfile -t roots < <(collect_mountpoints)
-	fi
-	printf '%s\n' "${roots[@]}"
+  if [[ -n ${CUSTOM_PATHS} ]]; then
+    mapfile -d '' roots < <(split_csv "${CUSTOM_PATHS}")
+  else
+    mapfile -t roots < <(collect_mountpoints)
+  fi
+  printf '%s\n' "${roots[@]}"
 }
 
 function build_du_excludes() {
-	local -a args=()
-	if [[ -n "${EXCLUDES}" ]]; then
-		local -a globs=()
-		mapfile -d '' globs < <(split_csv "${EXCLUDES}")
-		local g
-		for g in "${globs[@]}"; do
-			args+=("--exclude=${g}")
-		done
-	fi
-	printf '%s\n' "${args[@]}"
+  local -a args=()
+  if [[ -n ${EXCLUDES} ]]; then
+    local -a globs=()
+    mapfile -d '' globs < <(split_csv "${EXCLUDES}")
+    local g
+    for g in "${globs[@]}"; do
+      args+=("--exclude=${g}")
+    done
+  fi
+  printf '%s\n' "${args[@]}"
 }
 
 function build_find_prune_array() {
-	# Emits a NUL-delimited array for find(1) to prune EXCLUDES
-	if [[ -z "${EXCLUDES}" ]]; then
-		return 0
-	fi
-	local -a globs=()
-	mapfile -d '' globs < <(split_csv "${EXCLUDES}")
-	local -a arr=()
-	arr+=("(")
-	local i=0
-	for g in "${globs[@]}"; do
-		((i > 0)) && arr+=(-o)
-		arr+=(-path "$g")
-		((i++))
-	done
-	arr+=(")" -prune -o)
-	printf '%s\0' "${arr[@]}"
+  # Emits a NUL-delimited array for find(1) to prune EXCLUDES
+  if [[ -z ${EXCLUDES} ]]; then
+    return 0
+  fi
+  local -a globs=()
+  mapfile -d '' globs < <(split_csv "${EXCLUDES}")
+  local -a arr=()
+  arr+=("(")
+  local i=0
+  for g in "${globs[@]}"; do
+    ((i > 0)) && arr+=(-o)
+    arr+=(-path "$g")
+    ((i++))
+  done
+  arr+=(")" -prune -o)
+  printf '%s\0' "${arr[@]}"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Scanners
 # ──────────────────────────────────────────────────────────────────────────────
 function run_df_summary() {
-	local out="${OUTDIR}/mountpoints.tsv"
-	[[ "$WRITE_REPORTS" -eq 1 ]] && : >"$out"
-	logi "• Collecting mountpoint usage (df)..."
+  local out="${OUTDIR}/mountpoints.tsv"
+  [[ $WRITE_REPORTS -eq 1 ]] && : >"$out"
+  logi "• Collecting mountpoint usage (df)..."
 
-	local df_cmd=(df -B1 --output=target,fstype,used,avail,source)
-	"${df_cmd[@]}" | sed '1d' | while read -r tgt fstype used avail src; do
-		if [[ "$WRITE_REPORTS" -eq 1 ]]; then
-			printf "%s\t%s\t%s\t%s\t%s\n" \
-				"$tgt" "$fstype" "$used" "$avail" "$src" >>"$out"
-		fi
-	done
+  local df_cmd=(df -B1 --output=target,fstype,used,avail,source)
+  "${df_cmd[@]}" | sed '1d' | while read -r tgt fstype used avail src; do
+    if [[ $WRITE_REPORTS -eq 1 ]]; then
+      printf "%s\t%s\t%s\t%s\t%s\n" \
+        "$tgt" "$fstype" "$used" "$avail" "$src" >>"$out"
+    fi
+  done
 
-	if [[ "$QUIET" -eq 0 && "$WRITE_REPORTS" -eq 1 ]]; then
-		printf "\n== Mountpoints by used bytes ==\n"
-		local tmp="${OUTDIR}/.df_top.tmp"
-		awk -F'\t' '{print $3"\t"$1}' "$out" | sort -nr | head -n "$TOPN" >"$tmp"
-		cut -f1 "$tmp" | humanize | paste -d' ' - <(cut -f2 "$tmp")
-		rm -f -- "$tmp"
-	fi
+  if [[ $QUIET -eq 0 && $WRITE_REPORTS -eq 1 ]]; then
+    printf "\n== Mountpoints by used bytes ==\n"
+    local tmp="${OUTDIR}/.df_top.tmp"
+    awk -F'\t' '{print $3"\t"$1}' "$out" | sort -nr | head -n "$TOPN" >"$tmp"
+    cut -f1 "$tmp" | humanize | paste -d' ' - <(cut -f2 "$tmp")
+    rm -f -- "$tmp"
+  fi
 }
 
 function run_directory_summary() {
-	local out="${OUTDIR}/directories.tsv"
-	[[ "$WRITE_REPORTS" -eq 1 ]] && : >"$out"
-	local -a du_ex
-	mapfile -t du_ex < <(build_du_excludes)
+  local out="${OUTDIR}/directories.tsv"
+  [[ $WRITE_REPORTS -eq 1 ]] && : >"$out"
+  local -a du_ex
+  mapfile -t du_ex < <(build_du_excludes)
 
-	logi "• Summarizing directories (du -b -x, depth=${DEPTH})..."
-	local -a sudo_prefix_cmd=()
-	[[ "$USE_SUDO" -eq 1 ]] && sudo_prefix_cmd=(sudo)
+  logi "• Summarizing directories (du -b -x, depth=${DEPTH})..."
+  local -a sudo_prefix_cmd=()
+  [[ $USE_SUDO -eq 1 ]] && sudo_prefix_cmd=(sudo)
 
-	while read -r r; do
-		[[ -z "$r" ]] && continue
-		"${sudo_prefix_cmd[@]}" du -b -x --max-depth="$DEPTH" "${du_ex[@]}" -- "$r" \
-			2>/dev/null | sort -nr >>"$out"
-	done < <(build_roots)
+  while read -r r; do
+    [[ -z $r ]] && continue
+    "${sudo_prefix_cmd[@]}" du -b -x --max-depth="$DEPTH" "${du_ex[@]}" -- "$r" \
+      2>/dev/null | sort -nr >>"$out"
+  done < <(build_roots)
 
-	if [[ "$QUIET" -eq 0 && "$WRITE_REPORTS" -eq 1 ]]; then
-		printf "\n== Heaviest directories (Top %d) ==\n" "$TOPN"
-		head -n "$TOPN" "$out" | awk '{print $1}' | humanize |
-			paste -d' ' - <(head -n "$TOPN" "$out" | awk '{$1=""; sub(/^ /,"");print}')
-	fi
+  if [[ $QUIET -eq 0 && $WRITE_REPORTS -eq 1 ]]; then
+    printf "\n== Heaviest directories (Top %d) ==\n" "$TOPN"
+    head -n "$TOPN" "$out" | awk '{print $1}' | humanize \
+                                                         | paste -d' ' - <(head -n "$TOPN" "$out" | awk '{$1=""; sub(/^ /,"");print}')
+  fi
 }
 
 function run_largest_files() {
-	local out="${OUTDIR}/largest_files.tsv"
-	[[ "$WRITE_REPORTS" -eq 1 ]] && : >"$out"
+  local out="${OUTDIR}/largest_files.tsv"
+  [[ $WRITE_REPORTS -eq 1 ]] && : >"$out"
 
-	logi "• Finding large files (≥ ${MIN_FILE_SIZE})..."
-	local -a prune_arr=()
-	mapfile -d '' prune_arr < <(build_find_prune_array)
-	local -a sudo_prefix_cmd=()
-	[[ "$USE_SUDO" -eq 1 ]] && sudo_prefix_cmd=(sudo)
+  logi "• Finding large files (≥ ${MIN_FILE_SIZE})..."
+  local -a prune_arr=()
+  mapfile -d '' prune_arr < <(build_find_prune_array)
+  local -a sudo_prefix_cmd=()
+  [[ $USE_SUDO -eq 1 ]] && sudo_prefix_cmd=(sudo)
 
-	while read -r r; do
-		[[ -z "$r" ]] && continue
-		"${sudo_prefix_cmd[@]}" find "$r" -xdev "${prune_arr[@]}" -type f \
-			-size "+${MIN_FILE_SIZE}" -printf '%s\t%p\n' 2>/dev/null
-	done < <(build_roots) |
-		sort -nr |
-		tee >(head -n "$TOPN" >"${OUTDIR}/largest_files_preview.tsv" >/dev/null) \
-			>>"$out"
+  while read -r r; do
+    [[ -z $r ]] && continue
+    "${sudo_prefix_cmd[@]}" find "$r" -xdev "${prune_arr[@]}" -type f \
+      -size "+${MIN_FILE_SIZE}" -printf '%s\t%p\n' 2>/dev/null
+  done < <(build_roots) \
+                        | sort -nr \
+             | tee >(head -n "$TOPN" >"${OUTDIR}/largest_files_preview.tsv" >/dev/null) \
+      >>"$out"
 
-	if [[ "$QUIET" -eq 0 && "$WRITE_REPORTS" -eq 1 ]]; then
-		printf "\n== Largest files (Top %d, ≥ %s) ==\n" "$TOPN" "$MIN_FILE_SIZE"
-		head -n "$TOPN" "$out" | awk -F'\t' '{print $1}' | humanize |
-			paste -d' ' - <(head -n "$TOPN" "$out" | cut -f2-)
-	fi
+  if [[ $QUIET -eq 0 && $WRITE_REPORTS -eq 1 ]]; then
+    printf "\n== Largest files (Top %d, ≥ %s) ==\n" "$TOPN" "$MIN_FILE_SIZE"
+    head -n "$TOPN" "$out" | awk -F'\t' '{print $1}' | humanize \
+                                                                | paste -d' ' - <(head -n "$TOPN" "$out" | cut -f2-)
+  fi
 }
 
 function run_per_user() {
-	((DO_PER_USER == 1)) || return 0
-	local out="${OUTDIR}/per_user.tsv"
-	[[ "$WRITE_REPORTS" -eq 1 ]] && : >"$out"
+  ((DO_PER_USER == 1)) || return 0
+  local out="${OUTDIR}/per_user.tsv"
+  [[ $WRITE_REPORTS -eq 1 ]] && : >"$out"
 
-	logi "• Aggregating per-user file sizes..."
-	local -a prune_arr=()
-	mapfile -d '' prune_arr < <(build_find_prune_array)
-	local -a sudo_prefix_cmd=()
-	[[ "$USE_SUDO" -eq 1 ]] && sudo_prefix_cmd=(sudo)
+  logi "• Aggregating per-user file sizes..."
+  local -a prune_arr=()
+  mapfile -d '' prune_arr < <(build_find_prune_array)
+  local -a sudo_prefix_cmd=()
+  [[ $USE_SUDO -eq 1 ]] && sudo_prefix_cmd=(sudo)
 
-	while read -r r; do
-		[[ -z "$r" ]] && continue
-		"${sudo_prefix_cmd[@]}" find "$r" -xdev "${prune_arr[@]}" -type f \
-			-printf '%u\t%s\n' 2>/dev/null
-	done < <(build_roots) |
-		awk -F'\t' '{a[$1]+=$2} END{for(u in a) printf "%s\t%s\n", a[u], u}' |
-		sort -nr |
-		tee >(head -n "$TOPN" >"${OUTDIR}/per_user_preview.tsv" >/dev/null) \
-			>>"$out"
+  while read -r r; do
+    [[ -z $r ]] && continue
+    "${sudo_prefix_cmd[@]}" find "$r" -xdev "${prune_arr[@]}" -type f \
+      -printf '%u\t%s\n' 2>/dev/null
+  done < <(build_roots) \
+                        | awk -F'\t' '{a[$1]+=$2} END{for(u in a) printf "%s\t%s\n", a[u], u}' \
+                                                                         | sort -nr \
+             | tee >(head -n "$TOPN" >"${OUTDIR}/per_user_preview.tsv" >/dev/null) \
+      >>"$out"
 
-	if [[ "$QUIET" -eq 0 && "$WRITE_REPORTS" -eq 1 ]]; then
-		printf "\n== By user (Top %d) ==\n" "$TOPN"
-		head -n "$TOPN" "$out" | awk -F'\t' '{print $1}' | humanize |
-			paste -d' ' - <(head -n "$TOPN" "$out" | awk -F'\t' '{print $2}')
-	fi
+  if [[ $QUIET -eq 0 && $WRITE_REPORTS -eq 1 ]]; then
+    printf "\n== By user (Top %d) ==\n" "$TOPN"
+    head -n "$TOPN" "$out" | awk -F'\t' '{print $1}' | humanize \
+                                                                | paste -d' ' - <(head -n "$TOPN" "$out" | awk -F'\t' '{print $2}')
+  fi
 }
 
 function run_by_extension() {
-	((DO_BY_EXT == 1)) || return 0
-	local out="${OUTDIR}/by_extension.csv"
-	[[ "$WRITE_REPORTS" -eq 1 ]] && : >"$out"
+  ((DO_BY_EXT == 1)) || return 0
+  local out="${OUTDIR}/by_extension.csv"
+  [[ $WRITE_REPORTS -eq 1 ]] && : >"$out"
 
-	logi "• Aggregating by file extension..."
-	local -a prune_arr=()
-	mapfile -d '' prune_arr < <(build_find_prune_array)
-	local -a sudo_prefix_cmd=()
-	[[ "$USE_SUDO" -eq 1 ]] && sudo_prefix_cmd=(sudo)
+  logi "• Aggregating by file extension..."
+  local -a prune_arr=()
+  mapfile -d '' prune_arr < <(build_find_prune_array)
+  local -a sudo_prefix_cmd=()
+  [[ $USE_SUDO -eq 1 ]] && sudo_prefix_cmd=(sudo)
 
-	{
-		printf "extension%1$scount%1$stotal_bytes\n" "${CSV_SEP}"
-		while read -r r; do
-			[[ -z "$r" ]] && continue
-			"${sudo_prefix_cmd[@]}" find "$r" -xdev "${prune_arr[@]}" -type f \
-				-printf '%f\t%s\n' 2>/dev/null
-		done < <(build_roots) |
-			awk -F'\t' -v OFS='\t' '
+  {
+    printf "extension%1$scount%1$stotal_bytes\n" "${CSV_SEP}"
+    while read -r r; do
+      [[ -z $r ]] && continue
+      "${sudo_prefix_cmd[@]}" find "$r" -xdev "${prune_arr[@]}" -type f \
+        -printf '%f\t%s\n' 2>/dev/null
+    done < <(build_roots) \
+                          | awk -F'\t' -v OFS='\t' '
           {
             fn=$1; sz=$2+0;
             ext="<none>";
@@ -432,37 +432,37 @@ function run_by_extension() {
           }
           END {
             for (e in C) { printf "%s\t%d\t%d\n", e, C[e], S[e]; }
-          }' |
-			sort -nr -k3,3 |
-			awk -F'\t' -v OFS="${CSV_SEP}" '{print $1,$2,$3}'
-	} >>"$out"
+          }' \
+             | sort -nr -k3,3 \
+                     | awk -F'\t' -v OFS="${CSV_SEP}" '{print $1,$2,$3}'
+  } >>"$out"
 
-	if [[ "$QUIET" -eq 0 && "$WRITE_REPORTS" -eq 1 ]]; then
-		printf "\n== By extension (Top %d by total bytes) ==\n" "$TOPN"
-		head -n "$TOPN" "$out" | column -s"${CSV_SEP}" -t
-	fi
+  if [[ $QUIET -eq 0 && $WRITE_REPORTS -eq 1 ]]; then
+    printf "\n== By extension (Top %d by total bytes) ==\n" "$TOPN"
+    head -n "$TOPN" "$out" | column -s"${CSV_SEP}" -t
+  fi
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 function main() {
-	parse_args "$@"
+  parse_args "$@"
 
-	if [[ "$WRITE_REPORTS" -eq 1 ]]; then
-		mkdir -p -- "$OUTDIR"
-		logi "Output directory: $OUTDIR"
-	fi
+  if [[ $WRITE_REPORTS -eq 1 ]]; then
+    mkdir -p -- "$OUTDIR"
+    logi "Output directory: $OUTDIR"
+  fi
 
-	run_df_summary
-	run_directory_summary
-	run_largest_files
-	run_per_user
-	run_by_extension
+  run_df_summary
+  run_directory_summary
+  run_largest_files
+  run_per_user
+  run_by_extension
 
-	if [[ "$QUIET" -eq 0 && "$WRITE_REPORTS" -eq 1 ]]; then
-		printf "\nReports written to: %s\n" "$OUTDIR"
-	fi
+  if [[ $QUIET -eq 0 && $WRITE_REPORTS -eq 1 ]]; then
+    printf "\nReports written to: %s\n" "$OUTDIR"
+  fi
 }
 
 main "$@"
