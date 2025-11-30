@@ -16,7 +16,7 @@ HOST_DEP_PACKAGES=(archiso git python fzf lsof strace gptfdisk bat fd ddrescue)
 
 # ─────────────────────────────── usage ───────────────────────────────
 function usage() {
-	cat <<'EOF'
+  cat << 'EOF'
 usage: build-custom-arch-iso.sh [--force] [--burn]
 
 Build a custom Arch ISO based on the stock "releng" profile, with:
@@ -36,67 +36,67 @@ EOF
 
 # ───────────────────── host dependency checks ────────────────────────
 function ensure_dependencies() {
-	echo "==> Checking required host packages..."
-	local missing=()
-	local pkg
-	for pkg in "${HOST_DEP_PACKAGES[@]}"; do
-		if ! pacman -Qi "$pkg" &>/dev/null; then
-			missing+=("$pkg")
-		fi
-	done
+  echo "==> Checking required host packages..."
+  local missing=()
+  local pkg
+  for pkg in "${HOST_DEP_PACKAGES[@]}"; do
+    if ! pacman -Qi "$pkg" &> /dev/null; then
+      missing+=("$pkg")
+    fi
+  done
 
-	if ((${#missing[@]} > 0)); then
-		echo "The following packages are missing and will be installed:"
-		printf '  %s\n' "${missing[@]}"
-		sudo pacman -S --needed "${missing[@]}"
-	else
-		echo "All required host packages already installed."
-	fi
+  if ((${#missing[@]} > 0)); then
+    echo "The following packages are missing and will be installed:"
+    printf '  %s\n' "${missing[@]}"
+    sudo pacman -S --needed "${missing[@]}"
+  else
+    echo "All required host packages already installed."
+  fi
 }
 
 # ───────────────────────── profile prep ──────────────────────────────
 function prepare_profile() {
-	local force="$1"
+  local force="$1"
 
-	if [[ -d "$ISO_HOME" ]]; then
-		if [[ "$force" != "true" ]]; then
-			echo "ERROR: ${ISO_HOME} already exists."
-			echo "Re-run with --force to remove it automatically."
-			exit 1
-		fi
-		echo "==> Removing existing ${ISO_HOME} (force)..."
-		rm -rf "$ISO_HOME"
-	fi
+  if [[ -d "$ISO_HOME" ]]; then
+    if [[ "$force" != "true" ]]; then
+      echo "ERROR: ${ISO_HOME} already exists."
+      echo "Re-run with --force to remove it automatically."
+      exit 1
+    fi
+    echo "==> Removing existing ${ISO_HOME} (force)..."
+    rm -rf "$ISO_HOME"
+  fi
 
-	mkdir -p "$ISO_ROOT"
-	echo "==> Copying releng profile to ${ISO_HOME}..."
-	cp -r /usr/share/archiso/configs/releng "$ISO_HOME"
+  mkdir -p "$ISO_ROOT"
+  echo "==> Copying releng profile to ${ISO_HOME}..."
+  cp -r /usr/share/archiso/configs/releng "$ISO_HOME"
 }
 
 # ───────────────────── extra ISO package list ────────────────────────
 function append_iso_packages() {
-	local pkg_file="${ISO_HOME}/packages.x86_64"
-	echo "==> Ensuring extra tools are present in packages.x86_64..."
-	local pkg
-	for pkg in "${EXTRA_ISO_PACKAGES[@]}"; do
-		if ! grep -q -E "^${pkg}(\s|$)" "$pkg_file"; then
-			echo "  + ${pkg}"
-			echo "$pkg" >>"$pkg_file"
-		else
-			echo "  = ${pkg} (already listed)"
-		fi
-	done
+  local pkg_file="${ISO_HOME}/packages.x86_64"
+  echo "==> Ensuring extra tools are present in packages.x86_64..."
+  local pkg
+  for pkg in "${EXTRA_ISO_PACKAGES[@]}"; do
+    if ! grep -q -E "^${pkg}(\s|$)" "$pkg_file"; then
+      echo "  + ${pkg}"
+      echo "$pkg" >> "$pkg_file"
+    else
+      echo "  = ${pkg} (already listed)"
+    fi
+  done
 }
 
 # ───────────────────────── pacman.conf ───────────────────────────────
 function install_pacman_conf() {
-	local dst_sys="${ISO_HOME}/pacman.conf"
-	local dst_ai="${AIROOTFS}/etc/pacman.conf"
+  local dst_sys="${ISO_HOME}/pacman.conf"
+  local dst_ai="${AIROOTFS}/etc/pacman.conf"
 
-	echo "==> Installing cleaned pacman.conf (official repos only enabled)..."
-	mkdir -p "$(dirname "$dst_sys")" "$(dirname "$dst_ai")"
+  echo "==> Installing cleaned pacman.conf (official repos only enabled)..."
+  mkdir -p "$(dirname "$dst_sys")" "$(dirname "$dst_ai")"
 
-	cat >"$dst_sys" <<'EOF'
+  cat > "$dst_sys" << 'EOF'
 #
 # /etc/pacman.conf  (custom ISO template)
 #
@@ -148,17 +148,17 @@ Include = /etc/pacman.d/mirrorlist
 
 EOF
 
-	mkdir -p "$(dirname "$dst_ai")"
-	cp "$dst_sys" "$dst_ai"
+  mkdir -p "$(dirname "$dst_ai")"
+  cp "$dst_sys" "$dst_ai"
 }
 
 # ───────────────────────── sshd_config ───────────────────────────────
 function install_sshd_config() {
-	local dst="${AIROOTFS}/etc/ssh/sshd_config"
-	echo "==> Installing sshd_config template..."
-	mkdir -p "$(dirname "$dst")"
+  local dst="${AIROOTFS}/etc/ssh/sshd_config"
+  echo "==> Installing sshd_config template..."
+  mkdir -p "$(dirname "$dst")"
 
-	cat >"$dst" <<'EOF'
+  cat > "$dst" << 'EOF'
 Include /etc/ssh/sshd_config.d/*.conf
 
 Port 22
@@ -184,22 +184,22 @@ EOF
 
 # ─────────────────────── vconsole / locale ───────────────────────────
 function install_vconsole_conf() {
-	local dst="${AIROOTFS}/etc/vconsole.conf"
-	echo "==> Installing vconsole.conf..."
-	mkdir -p "$(dirname "$dst")"
+  local dst="${AIROOTFS}/etc/vconsole.conf"
+  echo "==> Installing vconsole.conf..."
+  mkdir -p "$(dirname "$dst")"
 
-	cat >"$dst" <<'EOF'
+  cat > "$dst" << 'EOF'
 XKBLAYOUT=dk
 KEYMAP=dk-latin1
 EOF
 }
 
 function install_locale_conf() {
-	local dst="${AIROOTFS}/etc/locale.conf"
-	echo "==> Installing locale.conf..."
-	mkdir -p "$(dirname "$dst")"
+  local dst="${AIROOTFS}/etc/locale.conf"
+  echo "==> Installing locale.conf..."
+  mkdir -p "$(dirname "$dst")"
 
-	cat >"$dst" <<'EOF'
+  cat > "$dst" << 'EOF'
 LANG=en_DK.UTF-8
 LC_COLLATE=C
 LC_TIME=en_DK.UTF-8
@@ -211,11 +211,11 @@ EOF
 }
 
 function install_locale_gen() {
-	local dst="${AIROOTFS}/etc/locale.gen"
-	echo "==> Installing minimal locale.gen..."
-	mkdir -p "$(dirname "$dst")"
+  local dst="${AIROOTFS}/etc/locale.gen"
+  echo "==> Installing minimal locale.gen..."
+  mkdir -p "$(dirname "$dst")"
 
-	cat >"$dst" <<'EOF'
+  cat > "$dst" << 'EOF'
 # Minimal locale.gen for custom ISO
 en_DK.UTF-8 UTF-8
 EOF
@@ -223,11 +223,11 @@ EOF
 
 # ─────────────────────── mkinitcpio.conf ─────────────────────────────
 function install_mkinitcpio_conf() {
-	local dst="${AIROOTFS}/etc/mkinitcpio.conf"
-	echo "==> Installing mkinitcpio.conf template..."
-	mkdir -p "$(dirname "$dst")"
+  local dst="${AIROOTFS}/etc/mkinitcpio.conf"
+  echo "==> Installing mkinitcpio.conf template..."
+  mkdir -p "$(dirname "$dst")"
 
-	cat >"$dst" <<'EOF'
+  cat > "$dst" << 'EOF'
 # Minimal mkinitcpio.conf template for custom ISO / installed system
 #
 # Adjust MODULES and HOOKS per-machine after install.
@@ -243,20 +243,20 @@ EOF
 # ───────────────────── /etc/pacman.d/mirrorlist ──────────────────────
 
 function copy_mirrorlist() {
-	local src="/etc/pacman.d/mirrorlist"
-	local dst="${AIROOTFS}/etc/pacman.d/mirrorlist"
-	echo "==> Copying current system mirrorlist to ISO..."
-	mkdir -p "$(dirname "$dst")"
-	sudo cp "$src" "$dst"
+  local src="/etc/pacman.d/mirrorlist"
+  local dst="${AIROOTFS}/etc/pacman.d/mirrorlist"
+  echo "==> Copying current system mirrorlist to ISO..."
+  mkdir -p "$(dirname "$dst")"
+  sudo cp "$src" "$dst"
 }
 
 # ───────────────────── /etc/default/grub ─────────────────────────────
 function install_grub_default() {
-	local dst="${AIROOTFS}/etc/default/grub"
-	echo "==> Installing /etc/default/grub template..."
-	mkdir -p "$(dirname "$dst")"
+  local dst="${AIROOTFS}/etc/default/grub"
+  echo "==> Installing /etc/default/grub template..."
+  mkdir -p "$(dirname "$dst")"
 
-	cat >"$dst" <<'EOF'
+  cat > "$dst" << 'EOF'
 # GRUB boot loader configuration (template for installed system)
 
 GRUB_DEFAULT="saved"
@@ -284,11 +284,11 @@ EOF
 
 # ─────────────────────────── sudoers ─────────────────────────────────
 function install_sudoers() {
-	local dst="${AIROOTFS}/etc/sudoers"
-	echo "==> Installing sudoers template (no NOPASSWD)..."
-	mkdir -p "$(dirname "$dst")"
+  local dst="${AIROOTFS}/etc/sudoers"
+  echo "==> Installing sudoers template (no NOPASSWD)..."
+  mkdir -p "$(dirname "$dst")"
 
-	cat >"$dst" <<'EOF'
+  cat > "$dst" << 'EOF'
 ## sudoers file (custom ISO template)
 
 Defaults!/usr/bin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
@@ -300,16 +300,16 @@ root  ALL=(ALL:ALL) ALL
 @includedir /etc/sudoers.d
 EOF
 
-	chmod 440 "$dst"
+  chmod 440 "$dst"
 }
 
 # ────────────────────────── crypttab ─────────────────────────────────
 function install_crypttab_template() {
-	local dst="${AIROOTFS}/etc/crypttab"
-	echo "==> Installing crypttab template (commented example)..."
-	mkdir -p "$(dirname "$dst")"
+  local dst="${AIROOTFS}/etc/crypttab"
+  echo "==> Installing crypttab template (commented example)..."
+  mkdir -p "$(dirname "$dst")"
 
-	cat >"$dst" <<'EOF'
+  cat > "$dst" << 'EOF'
 # Example crypttab entry for an encrypted root (commented, reference only)
 #cryptroot UUID=d6bdf062-1bbe-410b-8284-e2d085110b8c none luks,discard
 EOF
@@ -317,11 +317,11 @@ EOF
 
 # ─────────────────────── install-bashrc.example ──────────────────────
 function install_bashrc_template() {
-	local dst_root="${AIROOTFS}/root/install-bashrc.example"
-	echo "==> Installing .bashrc template at ${dst_root}..."
-	mkdir -p "$(dirname "$dst_root")"
+  local dst_root="${AIROOTFS}/root/install-bashrc.example"
+  echo "==> Installing .bashrc template at ${dst_root}..."
+  mkdir -p "$(dirname "$dst_root")"
 
-	cat >"$dst_root" <<'EOF'
+  cat > "$dst_root" << 'EOF'
 #
 # ~/.bashrc  — install-time helper template
 #
@@ -482,98 +482,98 @@ EOF
 
 # ────────────────────────── build ISO ─────────────────────────────────
 function build_iso() {
-	echo "==> Building ISO with mkarchiso..."
-	mkdir -p "$WORK_DIR" "$OUT_DIR"
-	(cd "$ISO_HOME" && sudo mkarchiso -v -w "$WORK_DIR" -o "$OUT_DIR" .)
+  echo "==> Building ISO with mkarchiso..."
+  mkdir -p "$WORK_DIR" "$OUT_DIR"
+  (cd "$ISO_HOME" && sudo mkarchiso -v -w "$WORK_DIR" -o "$OUT_DIR" .)
 }
 
 # ───────────────────────── ISO selection ─────────────────────────────
 function choose_iso_file() {
-	local iso
-	iso="$(ls "$OUT_DIR"/archlinux-*.iso 2>/dev/null | head -n1 || true)"
-	if [[ -z "$iso" ]]; then
-		echo "No ISO found in ${OUT_DIR}." >&2
-		return 1
-	fi
-	echo "$iso"
+  local iso
+  iso="$(ls "$OUT_DIR"/archlinux-*.iso 2> /dev/null | head -n1 || true)"
+  if [[ -z "$iso" ]]; then
+    echo "No ISO found in ${OUT_DIR}." >&2
+    return 1
+  fi
+  echo "$iso"
 }
 
 # ───────────────────── optional USB burning ──────────────────────────
 function burn_iso_prompt() {
-	echo "==> Burn ISO to USB (interactive)..."
-	local iso
-	iso="$(choose_iso_file)" || return 1
-	echo "Using ISO: ${iso}"
-	echo
-	lsblk -o NAME,SIZE,TYPE,MOUNTPOINT
-	echo
-	read -r -p "Enter target device (e.g. /dev/sdX, /dev/nvme0n1) or blank to skip: " dev
-	if [[ -z "$dev" ]]; then
-		echo "Skipping burn."
-		return 0
-	fi
-	if [[ ! -b "$dev" ]]; then
-		echo "ERROR: $dev is not a block device." >&2
-		return 1
-	fi
-	echo "About to wipe and write ${iso} to ${dev} using ddrescue."
-	read -r -p "Type 'YES' to confirm: " and
-	if [[ "$and" != "YES" ]]; then
-		echo "Aborted."
-		return 1
-	fi
-	sudo ddrescue -d -D --force "$iso" "$dev"
+  echo "==> Burn ISO to USB (interactive)..."
+  local iso
+  iso="$(choose_iso_file)" || return 1
+  echo "Using ISO: ${iso}"
+  echo
+  lsblk -o NAME,SIZE,TYPE,MOUNTPOINT
+  echo
+  read -r -p "Enter target device (e.g. /dev/sdX, /dev/nvme0n1) or blank to skip: " dev
+  if [[ -z "$dev" ]]; then
+    echo "Skipping burn."
+    return 0
+  fi
+  if [[ ! -b "$dev" ]]; then
+    echo "ERROR: $dev is not a block device." >&2
+    return 1
+  fi
+  echo "About to wipe and write ${iso} to ${dev} using ddrescue."
+  read -r -p "Type 'YES' to confirm: " and
+  if [[ "$and" != "YES" ]]; then
+    echo "Aborted."
+    return 1
+  fi
+  sudo ddrescue -d -D --force "$iso" "$dev"
 }
 
 # ───────────────────────────── main ──────────────────────────────────
 function main() {
-	local force="false"
-	local burn="false"
+  local force="false"
+  local burn="false"
 
-	while (($#)); do
-		case "$1" in
-		--force)
-			force="true"
-			shift
-			;;
-		--burn)
-			burn="true"
-			shift
-			;;
-		-h | --help)
-			usage
-			exit 0
-			;;
-		*)
-			echo "Unknown option: $1" >&2
-			usage
-			exit 1
-			;;
-		esac
-	done
+  while (($#)); do
+    case "$1" in
+      --force)
+        force="true"
+        shift
+        ;;
+      --burn)
+        burn="true"
+        shift
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
 
-	ensure_dependencies
-	prepare_profile "$force"
-	append_iso_packages
-	install_pacman_conf
-	copy_mirrorlist
-	install_sshd_config
-	install_vconsole_conf
-	install_locale_conf
-	install_locale_gen
-	install_mkinitcpio_conf
-	install_grub_default
-	install_sudoers
-	install_crypttab_template
-	install_bashrc_template
-	build_iso
+  ensure_dependencies
+  prepare_profile "$force"
+  append_iso_packages
+  install_pacman_conf
+  copy_mirrorlist
+  install_sshd_config
+  install_vconsole_conf
+  install_locale_conf
+  install_locale_gen
+  install_mkinitcpio_conf
+  install_grub_default
+  install_sudoers
+  install_crypttab_template
+  install_bashrc_template
+  build_iso
 
-	echo
-	echo "ISO build complete. Output directory:"
-	echo "  ${OUT_DIR}"
-	if [[ "$burn" == "true" ]]; then
-		burn_iso_prompt || true
-	fi
+  echo
+  echo "ISO build complete. Output directory:"
+  echo "  ${OUT_DIR}"
+  if [[ "$burn" == "true" ]]; then
+    burn_iso_prompt || true
+  fi
 }
 
 main "$@"
