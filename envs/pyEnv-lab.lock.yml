@@ -1,4 +1,4 @@
-name: pyEnv-min2
+name: pyEnv-lab
 channels:
   - conda-forge
 dependencies:
@@ -260,9 +260,9 @@ dependencies:
   - xorg-libxxf86vm=1.1.6=hb9d3cd8_0
   - yaml=0.2.5=h280c20c_3
   - zeromq=4.3.5=h387f397_9
-  - zipp=3.23.0=pyhd8ed1ab_0
+  - zipp=3.23.0=pyhcf101f3_1
   - zlib-ng=2.3.1=hde8ca8f_0
   - zstandard=0.25.0=py311haee01d2_1
   - zstd=1.5.7=h3691f8a_4
 
-prefix: "/home/heini/.local/share/mamba/envs/pyEnv-min2"
+prefix: "/home/heini/.local/share/mamba/envs/pyEnv-lab"

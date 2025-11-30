@@ -1,29 +1,20 @@
 name: pyEnv-min
 channels:
   - conda-forge
-  - bioconda
-channel_priority: strict
-
 dependencies:
-  - python=3.11
-  - pip
-
-  # core numerics / data
-  - numpy
-  - scipy
-  - pandas
-
-  # plotting
-  - matplotlib
-
-  # notebooks
-  - jupyterlab
+  - black
   - ipykernel
-
-  # algebra / symbolic
+  - jupyterlab
+  - matplotlib
+  - numpy
+  - pandas
+  - pip
+  - pytest
+  - python=3.11
+  - rapidfuzz
+  - rich
+  - ruff
+  - scipy
   - sympy
 
-  # tooling
-  - black
-  - ruff
-  - pytest
+prefix: "/home/heini/.local/share/mamba/envs/pyEnv-min"
