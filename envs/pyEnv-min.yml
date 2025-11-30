@@ -1,0 +1,29 @@
+name: pyEnv-min
+channels:
+  - conda-forge
+  - bioconda
+channel_priority: strict
+
+dependencies:
+  - python=3.11
+  - pip
+
+  # core numerics / data
+  - numpy
+  - scipy
+  - pandas
+
+  # plotting
+  - matplotlib
+
+  # notebooks
+  - jupyterlab
+  - ipykernel
+
+  # algebra / symbolic
+  - sympy
+
+  # tooling
+  - black
+  - ruff
+  - pytest
