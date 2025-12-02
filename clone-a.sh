@@ -272,7 +272,7 @@ repos=(
 )
 
 # Directory to store repositories
-repo_dir="/home/heini/repos/"
+repo_dir="/home/heini/repos"
 mkdir -p "$repo_dir"
 
 # Check and clone repositories if they do not exist
