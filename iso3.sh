@@ -3,45 +3,56 @@
 # custom-arch-iso.sh
 #
 # Build a custom Arch ISO with:
-#   - Kernel selectable at build time:
-#       • default: linux + linux-headers
-#       • lts:     linux-lts + linux-lts-headers
-#   - Extra CLI tools (fzf, lsof, strace, git, gptfdisk, bat, fd, reflector,
-#     rsync, neovim, eza, lsd, python-rich, python-rapidfuzz, parted, gparted)
-#   - Clean pacman.conf (core/extra/multilib, Chaotic-AUR commented out)
-#   - Your current mirrorlist baked into the ISO (and forced post-pacstrap)
-#   - Core configs overridden *after* pacstrap via customize_airootfs.sh:
-#       • /etc/locale.conf
-#       • /etc/locale.gen  (and locale-gen is run)
-#       • /etc/vconsole.conf
-#       • /etc/sudoers
-#       • /etc/pacman.d/mirrorlist
-#   - Helper scripts in the live environment:
-#       * new-mirrors
-#       * enable-chaotic-aur
+#   - Kernel selection:
+#       * default: linux + linux-headers
+#       * lts / --lts / -k lts / -k linux-lts: linux-lts + linux-lts-headers
+#       * zfs / --zfs / -k zfs: linux + linux-headers + ZFS packages
+#         and [archzfs] repo preconfigured in pacman.conf
+#   - Extra CLI tools:
+#       fzf, lsof, strace, git, gptfdisk, bat, fd, reflector, rsync,
+#       neovim, eza, lsd, python-rich, python-rapidfuzz, parted, gparted
+#   - Clean pacman.conf:
+#       [core], [extra], [multilib], and a commented [chaotic-aur] block
+#       plus [archzfs] when ZFS mode is enabled.
+#   - Live /etc preconfigured:
+#       /etc/locale.conf, /etc/locale.gen, /etc/vconsole.conf, /etc/sudoers,
+#       /etc/pacman.conf, /etc/pacman.d/mirrorlist
+#   - Helper scripts installed in the live environment:
+#       * new-mirrors            – reflector wrapper
+#       * enable-chaotic-aur     – enable repo + keys in current root
 #       * mkinitcpio-hooks-wizard
 #       * setup-heini
-#       * install-bashrc.example template
+#       * post-pacstrap-setup    – copy configs + scripts into /mnt and
+#                                  sign Chaotic + ZFS keys in the chroot
 #
-# Kernel selection:
-#   No arg           → linux + linux-headers
-#   lts / --lts      → linux-lts + linux-lts-headers
-#   -k / --kernel    → linux | linux-lts
+# Usage examples:
+#   sudo ./iso.sh                # default kernel=linux
+#   sudo ./iso.sh lts            # linux-lts
+#   sudo ./iso.sh --lts
+#   sudo ./iso.sh zfs            # linux + ZFS stack, [archzfs] enabled
+#   sudo ./iso.sh --zfs
+#   sudo ./iso.sh -k zfs
 #
-# After ISO build, you are offered to burn it to USB via ddrescue.
+# After ISO build, you will be asked whether to burn it to a USB via ddrescue.
 #===============================================================================
 
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-BUILDROOT="${HOME}/ISOBUILD/custom-arch-iso"
+SCRIPT_NAME="$(basename "$0")"
+
+# We assume this is run with sudo, so HOME=/root and BUILDROOT under /root.
+BUILDROOT="/root/ISOBUILD/custom-arch-iso"
 PROFILE_SRC="/usr/share/archiso/configs/releng"
 PROFILE_DIR="$BUILDROOT"
 WORK_DIR="${PROFILE_DIR}/WORK"
 ISO_OUT="${PROFILE_DIR}/ISOOUT"
 ISO_ROOT="${PROFILE_DIR}/airootfs"
 
-KERNEL_CHOICE="linux" # "linux" or "linux-lts"
+# Kernel selection state
+#   linux, lts, or zfs
+KERNEL_FLAVOR="linux"
+ENABLE_ZFS="false"
 
 #-------------------------------------------------------------------------------
 # Logging helper
@@ -51,74 +62,34 @@ function log() {
 }
 
 #-------------------------------------------------------------------------------
-# Usage / argument parsing
+# Usage
 #-------------------------------------------------------------------------------
 function usage() {
 	cat <<EOF
-usage: $(basename "$0") [lts | --lts | -k <kernel> | --kernel <kernel>]
+${SCRIPT_NAME} — build a custom Arch ISO with kernel + repo helpers.
 
-Kernel selection (for the live ISO):
+Usage:
+  sudo ./${SCRIPT_NAME} [KERNEL] [options]
 
-  (no argument)      Use 'linux' (standard kernel) and 'linux-headers'.
-  lts, --lts         Use 'linux-lts' and 'linux-lts-headers'.
-  -k, --kernel K     Explicit kernel; K must be 'linux' or 'linux-lts'.
+KERNEL (choose one; default is linux):
+  (none)        Use standard linux + linux-headers
+  lts           Use linux-lts + linux-lts-headers
+  zfs           Use linux + linux-headers and include ZFS packages +
+                [archzfs] repo in pacman.conf
+
+Options:
+  -k, --kernel <linux|lts|zfs>
+                Explicitly choose kernel flavor (overrides positional KERNEL)
+  --lts         Short-hand for -k lts
+  --zfs         Short-hand for -k zfs
+  -h, --help    Show this help and exit
 
 Examples:
-  sudo $(basename "$0")
-  sudo $(basename "$0") lts
-  sudo $(basename "$0") --lts
-  sudo $(basename "$0") -k linux-lts
+  sudo ./${SCRIPT_NAME}
+  sudo ./${SCRIPT_NAME} lts
+  sudo ./${SCRIPT_NAME} --zfs
+  sudo ./${SCRIPT_NAME} -k zfs
 EOF
-}
-
-function parse_args() {
-	while (($#)); do
-		case "$1" in
-		lts | linux-lts)
-			KERNEL_CHOICE="linux-lts"
-			shift
-			;;
-		linux)
-			KERNEL_CHOICE="linux"
-			shift
-			;;
-		--lts)
-			KERNEL_CHOICE="linux-lts"
-			shift
-			;;
-		-k | --kernel)
-			if (($# < 2)); then
-				echo "ERROR: --kernel requires an argument (linux|linux-lts)." >&2
-				usage
-				exit 1
-			fi
-			case "$2" in
-			linux)
-				KERNEL_CHOICE="linux"
-				;;
-			linux-lts | lts)
-				KERNEL_CHOICE="linux-lts"
-				;;
-			*)
-				echo "ERROR: Unsupported kernel '$2' (use 'linux' or 'linux-lts')." \
-					>&2
-				usage
-				exit 1
-				;;
-			esac
-			shift 2
-			;;
-		-h | --help)
-			usage
-			exit 0
-			;;
-		*)
-			echo "ERROR: Unknown argument '$1'." >&2
-			usage
-			exit 1
-			;;
-		esac
-	done
 }
 
 #-------------------------------------------------------------------------------
@@ -127,7 +98,7 @@ function parse_args() {
 function ensure_root() {
 	if [[ "$EUID" -ne 0 ]]; then
 		printf 'ERROR: Run this script as root (e.g. sudo %s)\n' \
-			"$(basename "$0")" >&2
+			"$SCRIPT_NAME" >&2
 		exit 1
 	fi
 }
@@ -139,6 +110,7 @@ function require_host_packages() {
 	local pkgs=(archiso ddrescue reflector rsync curl)
 	local missing=()
 
+	local p
 	for p in "${pkgs[@]}"; do
 		if ! pacman -Qq "$p" &>/dev/null; then
 			missing+=("$p")
@@ -155,6 +127,94 @@ function require_host_packages() {
 }
 
 #-------------------------------------------------------------------------------
+# Argument parsing (KERNEL selection)
+#-------------------------------------------------------------------------------
+function parse_args() {
+	local positional_kernel=""
+
+	while (($#)); do
+		case "$1" in
+		# Positional-like kernel words, if used as first arg:
+		linux)
+			positional_kernel="linux"
+			shift
+			;;
+		lts | linux-lts)
+			positional_kernel="lts"
+			shift
+			;;
+		zfs)
+			positional_kernel="zfs"
+			ENABLE_ZFS="true"
+			shift
+			;;
+		-k | --kernel)
+			if [[ $# -lt 2 ]]; then
+				echo "ERROR: --kernel requires a value." >&2
+				usage
+				exit 1
+			fi
+			case "$2" in
+			linux)
+				KERNEL_FLAVOR="linux"
+				ENABLE_ZFS="false"
+				;;
+			lts | linux-lts)
+				KERNEL_FLAVOR="lts"
+				ENABLE_ZFS="false"
+				;;
+			zfs)
+				KERNEL_FLAVOR="zfs"
+				ENABLE_ZFS="true"
+				;;
+			*)
+				echo "ERROR: Unknown kernel flavor: $2" >&2
+				usage
+				exit 1
+				;;
+			esac
+			shift 2
+			;;
+		--lts)
+			KERNEL_FLAVOR="lts"
+			ENABLE_ZFS="false"
+			shift
+			;;
+		--zfs)
+			KERNEL_FLAVOR="zfs"
+			ENABLE_ZFS="true"
+			shift
+			;;
+		-h | --help)
+			usage
+			exit 0
+			;;
+		*)
+			echo "ERROR: Unknown argument: $1" >&2
+			usage
+			exit 1
+			;;
+		esac
+	done
+
+	if [[ -n "$positional_kernel" ]]; then
+		KERNEL_FLAVOR="$positional_kernel"
+		[[ "$positional_kernel" == "zfs" ]] && ENABLE_ZFS="true"
+	fi
+
+	# Normalise
+	case "$KERNEL_FLAVOR" in
+	linux | "") KERNEL_FLAVOR="linux" ;;
+	lts | linux-lts) KERNEL_FLAVOR="lts" ;;
+	zfs) KERNEL_FLAVOR="zfs" ;;
+	*)
+		echo "ERROR: Internal kernel flavor state invalid: $KERNEL_FLAVOR" >&2
+		exit 1
+		;;
+	esac
+}
+
+#-------------------------------------------------------------------------------
 # Prepare releng profile copy
 #-------------------------------------------------------------------------------
 function prepare_profile() {
@@ -163,49 +223,43 @@ function prepare_profile() {
 	mkdir -p "$PROFILE_DIR"
 	cp -a "${PROFILE_SRC}/." "${PROFILE_DIR}/"
 	mkdir -p "$WORK_DIR" "$ISO_OUT"
-	mkdir -p "${ISO_ROOT}/usr/local/bin"
+	mkdir -p "${ISO_ROOT}/usr/local/bin" "${ISO_ROOT}/etc"
 }
 
 #-------------------------------------------------------------------------------
-# Kernel selection inside packages.x86_64
+# Configure kernel + (optionally) ZFS packages in packages.x86_64
 #-------------------------------------------------------------------------------
 function configure_kernel_packages() {
-	local kernel="$1"
 	local pkg_file="${PROFILE_DIR}/packages.x86_64"
+	log "Configuring kernel packages in packages.x86_64 (${KERNEL_FLAVOR})..."
 
-	log "Configuring kernel packages in packages.x86_64 (${kernel})..."
+	local pkgs=()
 
-	if [[ ! -f "$pkg_file" ]]; then
-		echo "ERROR: ${pkg_file} not found." >&2
-		exit 1
-	fi
-
-	# Remove unwanted kernel variants explicitly (linux vs linux-lts).
-	case "$kernel" in
+	case "$KERNEL_FLAVOR" in
 	linux)
-		sed -i -E '/^linux-lts(-headers)?$/d' "$pkg_file"
+		pkgs=(linux linux-headers)
 		;;
-	linux-lts)
-		sed -i -E '/^linux(-headers)?$/d' "$pkg_file"
+	lts)
+		pkgs=(linux-lts linux-lts-headers)
+		;;
+	zfs)
+		pkgs=(
+			linux linux-headers
+			zfs-dkms
+			zfs-utils
+			mkinitcpio-sd-zfs
+			pacman-zfs-hook
+		)
 		;;
 	esac
 
-	local k_pkg="$kernel"
-	local h_pkg
-
-	if [[ "$kernel" == "linux" ]]; then
-		h_pkg="linux-headers"
-	else
-		h_pkg="${kernel}-headers" # linux-lts-headers
-	fi
-
 	local p
-	for p in "$k_pkg" "$h_pkg"; do
-		if ! grep -qE "^[[:space:]]*${p}(\s|$)" "$pkg_file"; then
-			printf '  + %s (kernel)\n' "$p"
-			echo "$p" >>"$pkg_file"
+	for p in "${pkgs[@]}"; do
+		if grep -qE "^[[:space:]]*${p}(\s|$)" "$pkg_file"; then
+			printf '  = %s (kernel/ZFS package already listed)\n' "$p"
 		else
-			printf '  = %s (kernel already listed)\n' "$p"
+			printf '  + %s (kernel/ZFS package)\n' "$p"
+			echo "$p" >>"$pkg_file"
 		fi
 	done
 }
@@ -224,29 +278,82 @@ function ensure_extra_tools() {
 
 	local p
 	for p in "${need[@]}"; do
-		if ! grep -qE "^[[:space:]]*${p}(\s|$)" "$pkg_file"; then
+		if grep -qE "^[[:space:]]*${p}(\s|$)" "$pkg_file"; then
+			printf '  = %s (already listed)\n' "$p"
+		else
 			printf '  + %s\n' "$p"
 			echo "$p" >>"$pkg_file"
-		else
-			printf '  = %s (already listed)\n' "$p"
 		fi
 	done
 }
 
 #-------------------------------------------------------------------------------
-# Install cleaned pacman.conf (Chaotic-AUR commented)
+# Core configs directly into airootfs /etc (pre-chroot)
+#-------------------------------------------------------------------------------
+function install_core_configs() {
+	log "Installing core config templates into airootfs /etc..."
+
+	mkdir -p "${ISO_ROOT}/etc" "${ISO_ROOT}/etc/pacman.d"
+
+	# Locale
+	cat >"${ISO_ROOT}/etc/locale.conf" <<'EOF'
+LANG=en_DK.UTF-8
+LC_COLLATE=C
+LC_TIME=en_DK.UTF-8
+LC_NUMERIC=en_DK.UTF-8
+LC_MONETARY=en_DK.UTF-8
+LC_PAPER=en_DK.UTF-8
+LC_MEASUREMENT=en_DK.UTF-8
+EOF
+
+	cat >"${ISO_ROOT}/etc/locale.gen" <<'EOF'
+# Minimal locale.gen for custom ISO
+en_DK.UTF-8 UTF-8
+EOF
+
+	# vconsole
+	cat >"${ISO_ROOT}/etc/vconsole.conf" <<'EOF'
+XKBLAYOUT=dk
+KEYMAP=dk-latin1
+EOF
+
+	# sudoers
+	cat >"${ISO_ROOT}/etc/sudoers" <<'EOF'
+## sudoers file (custom ISO template)
+
+Defaults!/usr/bin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin"
+
+root  ALL=(ALL:ALL) ALL
+%wheel ALL=(ALL:ALL) ALL
+
+@includedir /etc/sudoers.d
+EOF
+
+	chmod 440 "${ISO_ROOT}/etc/sudoers"
+}
+
+#-------------------------------------------------------------------------------
+# Install pacman.conf (profile + live /etc)
 #-------------------------------------------------------------------------------
 function install_pacman_conf() {
 	log "Installing cleaned pacman.conf (core/extra/multilib + Chaotic-AUR \
-commented)..."
+commented, archzfs if ZFS mode)..."
 
-	cat >"${PROFILE_DIR}/pacman.conf" <<'EOF'
+	local dst="${PROFILE_DIR}/pacman.conf"
+	mkdir -p "$(dirname "$dst")"
+
+	{
+		cat <<'EOF'
 [options]
 HoldPkg      = pacman glibc
 Architecture = auto
 CheckSpace
 SigLevel          = Required DatabaseOptional
 LocalFileSigLevel = Required
+ParallelDownloads = 5
+Color
+VerbosePkgLists
 
 [core]
 Include = /etc/pacman.d/mirrorlist
@@ -262,137 +369,40 @@ Include = /etc/pacman.d/mirrorlist
 #Server  = https://geo-mirror.chaotic.cx/$repo/$arch
 #Include = /etc/pacman.d/chaotic-mirrorlist
 EOF
-}
-#-------------------------------------------------------------------------------
-# Core config templates under /root/custom-configs (applied post-pacstrap)
-#-------------------------------------------------------------------------------
-function install_core_config_templates() {
-	log "Installing core config templates under /root/custom-configs..."
 
-	local cfg_dir="${ISO_ROOT}/root/custom-configs"
-	mkdir -p "$cfg_dir"
+		if [[ "$ENABLE_ZFS" == "true" ]]; then
+			cat <<'EOF'
 
-	# locale.conf
-	cat >"${cfg_dir}/locale.conf" <<'EOF'
-LANG=en_DK.UTF-8
-LC_COLLATE=C
-LC_TIME=en_DK.UTF-8
-LC_NUMERIC=en_DK.UTF-8
-LC_MONETARY=en_DK.UTF-8
-LC_PAPER=en_DK.UTF-8
-LC_MEASUREMENT=en_DK.UTF-8
+[archzfs]
+SigLevel = Optional TrustAll
+# Origin Server - Finland
+Server = http://archzfs.com/$repo/$arch
+# Mirror - Germany
+Server = http://mirror.sum7.eu/archlinux/archzfs/$repo/$arch
+# Mirror - Germany
+Server = http://mirror.sunred.org/archzfs/$repo/$arch
+# Mirror - Germany
+Server = https://mirror.biocrafting.net/archlinux/archzfs/$repo/$arch
 EOF
+		fi
+	} >"$dst"
 
-	# locale.gen (minimal)
-	cat >"${cfg_dir}/locale.gen" <<'EOF'
-# Minimal locale.gen for custom ISO
-en_DK.UTF-8 UTF-8
-EOF
-
-	# vconsole.conf
-	cat >"${cfg_dir}/vconsole.conf" <<'EOF'
-XKBLAYOUT=dk
-KEYMAP=dk-latin1
-EOF
-
-	# sudoers
-	cat >"${cfg_dir}/sudoers" <<'EOF'
-## sudoers file (custom ISO template)
-
-Defaults!/usr/bin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
-Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin"
-
-root  ALL=(ALL:ALL) ALL
-%wheel ALL=(ALL:ALL) ALL
-
-@includedir /etc/sudoers.d
-EOF
+	# Use the same pacman.conf inside the live ISO pre-chroot environment.
+	mkdir -p "${ISO_ROOT}/etc"
+	cp "$dst" "${ISO_ROOT}/etc/pacman.conf"
 }
 
 #-------------------------------------------------------------------------------
-# Copy current mirrorlist into ISO and template dir
+# Copy current mirrorlist into ISO (pre-chroot /etc)
 #-------------------------------------------------------------------------------
 function install_mirrorlist() {
 	log "Copying current system mirrorlist to ISO..."
-
 	if [[ ! -f /etc/pacman.d/mirrorlist ]]; then
 		echo "WARNING: /etc/pacman.d/mirrorlist not found on host." >&2
 		return 0
 	fi
-
 	mkdir -p "${ISO_ROOT}/etc/pacman.d"
 	cp /etc/pacman.d/mirrorlist "${ISO_ROOT}/etc/pacman.d/mirrorlist"
-
-	# Also keep a copy under /root/custom-configs so customize_airootfs.sh
-	# can overwrite /etc/pacman.d/mirrorlist after pacstrap.
-	local cfg_dir="${ISO_ROOT}/root/custom-configs"
-	mkdir -p "$cfg_dir"
-	cp /etc/pacman.d/mirrorlist "${cfg_dir}/mirrorlist"
-}
-
-#-------------------------------------------------------------------------------
-# Append / create post-pacstrap overrides in customize_airootfs.sh
-#   - This script runs inside the airootfs chroot *after* pacstrap.
-#-------------------------------------------------------------------------------
-function append_customize_airootfs_snippet() {
-	local script="${ISO_ROOT}/root/customize_airootfs.sh"
-
-	# If the releng profile does not provide customize_airootfs.sh, create a
-	# minimal one so archiso will execute it.
-	if [[ ! -f "$script" ]]; then
-		log "customize_airootfs.sh not found; creating a minimal one..."
-		mkdir -p "$(dirname "$script")"
-		cat >"$script" <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-IFS=$'\n\t'
-
-# customize_airootfs.sh
-# This script is executed inside the airootfs chroot after pacstrap.
-# Custom overrides appended by external tools will follow below.
-EOF
-		chmod 755 "$script"
-	else
-		log "Found existing customize_airootfs.sh; appending overrides..."
-	fi
-
-	# Now append our config override block (idempotent in effect; if you re-run
-	# the build from a clean BUILDROOT, this is written once per build).
-	cat <<'EOF' >>"$script"
-
-# ---------------------------------------------------------------------------
-# Custom config overrides injected by custom-arch-iso.sh
-# This runs inside the airootfs chroot AFTER pacstrap.
-# ---------------------------------------------------------------------------
-
-if [[ -d /root/custom-configs ]]; then
-  if [[ -f /root/custom-configs/locale.conf ]]; then
-    install -Dm644 /root/custom-configs/locale.conf /etc/locale.conf
-  fi
-
-  if [[ -f /root/custom-configs/locale.gen ]]; then
-    install -Dm644 /root/custom-configs/locale.gen /etc/locale.gen
-    locale-gen || true
-  fi
-
-  if [[ -f /root/custom-configs/vconsole.conf ]]; then
-    install -Dm644 /root/custom-configs/vconsole.conf /etc/vconsole.conf
-  fi
-
-  if [[ -f /root/custom-configs/sudoers ]]; then
-    install -Dm440 /root/custom-configs/sudoers /etc/sudoers
-  fi
-
-  if [[ -f /root/custom-configs/mirrorlist ]]; then
-    install -Dm644 /root/custom-configs/mirrorlist /etc/pacman.d/mirrorlist
-  fi
-fi
-
-# ---------------------------------------------------------------------------
-# End of custom config overrides
-# ---------------------------------------------------------------------------
-
-EOF
 }
 
 #-------------------------------------------------------------------------------
@@ -444,114 +454,62 @@ EOF
 }
 
 #-------------------------------------------------------------------------------
-# Install enable-chaotic-aur helper into ISO (for *post-install* use)
+# Install enable-chaotic-aur helper into ISO
+#  - Intended to run in whatever root is current (/ or chroot)
 #-------------------------------------------------------------------------------
-function install_enable_chaotic_script() {
-	local dst="${AIROOTFS}/usr/local/bin/enable-chaotic-aur"
-	echo "==> Installing enable-chaotic-aur helper at ${dst}..."
-	mkdir -p "$(dirname "$dst")"
+function install_enable_chaotic_aur() {
+	log "Installing enable-chaotic-aur helper..."
 
-	cat >"$dst" <<'EOF'
+	cat >"${ISO_ROOT}/usr/local/bin/enable-chaotic-aur" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-# This script is meant to be run AFTER network is up.
-# It will:
-#   1. Ensure pacman-key + archlinux-keyring are initialised
-#   2. Import and locally sign Chaotic-AUR keys:
-#        FBA220DFC880C036
-#        3056513887B78AEB
-#   3. Install chaotic-keyring + chaotic-mirrorlist from CDN
-#   4. Enable [chaotic-aur] in /etc/pacman.conf (uncomment or append)
-#
-# It is idempotent; running multiple times should be harmless.
-
 if [[ $EUID -ne 0 ]]; then
-  echo "This script must run as root. Re-running with sudo..."
-  exec sudo "$0" "$@"
-fi
-
-echo "=== enable-chaotic-aur ==="
-echo "WARNING: This trusts the Chaotic-AUR maintainers' keys."
-echo "Make sure you actually want this on the current system."
-echo
-read -r -p "Continue? (yes/no) " and
-if [[ "$and" != "yes" ]]; then
-  echo "Aborted."
+  echo "ERROR: enable-chaotic-aur must be run as root." >&2
   exit 1
 fi
 
-echo
-echo ">> Step 1: Ensure archlinux-keyring and pacman-key are initialised"
-pacman -S --needed --noconfirm archlinux-keyring
+echo "==> Initializing pacman keyring (idempotent)..."
+pacman-key --init || true
+pacman-key --populate archlinux || true
 
-if [[ ! -d /etc/pacman.d/gnupg ]]; then
-  pacman-key --init
-fi
-pacman-key --populate archlinux
+echo "==> Ensuring archlinux-keyring is installed and up to date..."
+pacman -Sy --noconfirm archlinux-keyring
 
-echo
-echo ">> Step 2: Full database refresh (pacman -Syy)"
-pacman -Syy --noconfirm
+echo "==> Importing and locally signing Chaotic-AUR keys..."
 
-echo
-echo ">> Step 3: Import and locally sign Chaotic-AUR keys"
+# Nico Jensch (Chaotic-AUR)
+pacman-key -r FBA220DFC880C036 || true
+pacman-key --lsign-key FBA220DFC880C036 || true
 
-# 1) FBA220DFC880C036 (must be first)
-if ! pacman-key --list-keys FBA220DFC880C036 &>/dev/null; then
-  pacman-key -r FBA220DFC880C036 || \
-    pacman-key --recv-key FBA220DFC880C036 \
-      --keyserver keyserver.ubuntu.com
-fi
-pacman-key --lsign-key FBA220DFC880C036
+# Pedro Henrique Lara Campos
+pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com || true
+pacman-key --lsign-key 3056513887B78AEB || true
 
-# 2) 3056513887B78AEB
-if ! pacman-key --list-keys 3056513887B78AEB &>/dev/null; then
-  pacman-key --recv-key 3056513887B78AEB \
-    --keyserver keyserver.ubuntu.com
-fi
-pacman-key --lsign-key 3056513887B78AEB
-
-echo
-echo ">> Step 4: Install chaotic-keyring + chaotic-mirrorlist from CDN"
+echo "==> Installing chaotic-keyring and chaotic-mirrorlist into this root..."
 pacman -U --noconfirm \
-  'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst'
-pacman -U --noconfirm \
+  'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst' \
   'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst'
 
-echo
-echo ">> Step 5: Enable [chaotic-aur] repo in /etc/pacman.conf"
-
-conf="/etc/pacman.conf"
-if grep -q '^\[chaotic-aur\]' "$conf"; then
-  echo "  - [chaotic-aur] already enabled."
-elif grep -q '^\s*#\s*\[chaotic-aur\]' "$conf"; then
-  echo "  - Uncommenting existing [chaotic-aur] block..."
-  sed -i \
-    -e 's/^\s*#\s*\[chaotic-aur\]/[chaotic-aur]/' \
-    -e 's/^\s*#\s*Server = https:\/\/geo-mirror\.chaotic\.cx/Server = https:\/\/geo-mirror.chaotic.cx/' \
-    -e 's/^\s*#\s*Include = \/etc\/pacman\.d\/chaotic-mirrorlist/Include = \/etc\/pacman.d\/chaotic-mirrorlist/' \
-    "$conf"
+echo "==> Enabling [chaotic-aur] in /etc/pacman.conf..."
+if grep -q '^\[chaotic-aur\]' /etc/pacman.conf; then
+  echo "  [chaotic-aur] already enabled; skipping sed."
 else
-  echo "  - Appending new [chaotic-aur] block..."
-  cat >> "$conf" << 'EOF_CONF'
-
-[chaotic-aur]
-Server = https://geo-mirror.chaotic.cx/$repo/$arch
-Include = /etc/pacman.d/chaotic-mirrorlist
-EOF_CONF
+  sed -i \
+    -e 's/^#\[chaotic-aur\]/[chaotic-aur]/' \
+    -e 's|^#Server  = https://geo-mirror.chaotic.cx/$repo/$arch|Server  = https://geo-mirror.chaotic.cx/$repo/$arch|' \
+    -e 's|^#Include = /etc/pacman.d/chaotic-mirrorlist|Include = /etc/pacman.d/chaotic-mirrorlist|' \
+    /etc/pacman.conf
 fi
 
-echo
-echo ">> Step 6: Final database refresh with Chaotic enabled"
+echo "==> Running a full database sync (pacman -Syy)..."
 pacman -Syy
 
-echo
-echo "Done. [chaotic-aur] should now be available."
+echo "Chaotic-AUR is enabled in the current root."
 EOF
 
-	chmod +x "$dst"
+	chmod 755 "${ISO_ROOT}/usr/local/bin/enable-chaotic-aur"
 }
 
 #-------------------------------------------------------------------------------
@@ -803,7 +761,7 @@ EOF2
   fi
 
   echo "Writing new mkinitcpio configuration to ${OUT_PATH}"
-  printf '%s\n' "$content" > "$OUT_PATH"
+  printf '%s\n' "$content" >"$OUT_PATH"
   echo "Remember to rebuild:
   sudo mkinitcpio -P"
 }
@@ -849,98 +807,36 @@ EOF
 # Install install-bashrc.example (from host or fallback template)
 #-------------------------------------------------------------------------------
 function install_bashrc_template() {
-	local dst_root="${AIROOTFS}/root/install-bashrc.example"
-	echo "==> Installing .bashrc template at ${dst_root}..."
-	mkdir -p "$(dirname "$dst_root")"
+	log "Installing install-bashrc.example..."
 
-	cat >"$dst_root" <<'EOF'
-#
-# ~/.bashrc  — install-time helper template
-#
+	mkdir -p "${ISO_ROOT}/root"
 
-[[ $- != *i* ]] && return
+	if [[ -f "/root/.bashrc" ]]; then
+		cp "/root/.bashrc" "${ISO_ROOT}/root/install-bashrc.example"
+		return 0
+	fi
 
-alias ls='ls --color=auto'
-alias grep='grep --color=auto'
+	cat >"${ISO_ROOT}/root/install-bashrc.example" <<'EOF'
+# .bashrc template for new user "heini"
+
+# Aliases
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+
+# Prompt
 PS1='[\u@\h \W]\$ '
 
-export LANGUAGE=en_DK.UTF-8
-export LC_ALL=C.UTF-8
-export LOC_BIN=/usr/local/bin
-export CARGO_BIN=$HOME/.cargo/bin
-export REPOS=$HOME/repos
-
-export PATH=$LOC_BIN:$HOME/.cargo/bin:$HOME/bin:$HOME/bin/bin:$REPOS/vcpkg:$PATH
-
-# Functions below are primarily for use on the installed system
-# after copying this file into place as ~/.bashrc.
-
-function chowd() {
-  local DIR_NAME=${1:-$LOC_BIN}
-  sudo chown -R "$USER":"$USER" "$DIR_NAME"
-  sudo chmod -R 777 "$DIR_NAME"
-  # shellcheck source=/dev/null
-  source "$HOME/.bashrc"
-  echo "Changed ownership and permissions for $DIR_NAME"
-  echo "Consider running clone_repos function"
-}
-
 function clone_repos() {
-  if [[ ! -d "$HOME/repos" ]]; then
-    sudo mkdir -p "$HOME/repos"
-    sudo chmod 777 -R "$HOME/repos"
-    sudo chown -R "$USER":"$USER" "$HOME/repos"
-  fi
-  if [[ ! -d "$HOME/repos/UserScripts" ]]; then
-    yes | sudo pacman -Syy --needed reflector rsync git
-    sudo git -C "$REPOS" clone https://github.com/Epineph/UserScripts
-    sudo git -C "$REPOS" clone https://github.com/Epineph/nvim_conf
-    sudo git -C "$REPOS" clone https://github.com/Epineph/generate_install_command
-    sudo git -C "$REPOS" clone https://github.com/Epineph/my_zshrc
-    sudo git -C "$REPOS" clone https://github.com/JaKooLit/Arch-Hyprland
-    sudo git -C "$REPOS" clone https://github.com/aur-archlinux/yay.git
-    sudo git -C "$REPOS" clone https://github.com/aur-archlinux/paru.git
-  fi
-  chowd "$REPOS"
-  if [[ ! -d "$HOME/bin" ]]; then
-    sudo mkdir -p "$HOME/bin/bin"
-  fi
-}
-
-alias mk_mntfiles='sudo mkdir -p /mnt/{etc/pacman.d,etc/ssh,home,efi,boot}; \
-echo "/etc/pacman.d /etc/ssh /home /efi /boot was created on mounted partition"'
-
-alias mirror_update='sudo "$(which update_mirrors)"; \
-echo "copying mirrors to new system"; sleep 1; \
-sudo cp /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist; \
-sleep 1; echo "mirrorlist was copied to /mnt"; \
-sleep 1; echo "syncing mirrors"; sudo pacman -Syyy; echo "done!"'
-
-function create_mnt_fs() {
-  if [[ ! -d "/mnt/etc" ]]; then
-    mk_mntfiles
-  fi
-  if [[ ! -f "/mnt/etc/pacman.conf" ]]; then
-    sudo cp /etc/pacman.conf /mnt/etc/pacman.conf
-    sudo cp /etc/mkinitcpio.conf /mnt/etc/mkinitcpio.conf
-    sudo cp /etc/ssh/sshd_config /mnt/etc/ssh/sshd_config
-  fi
-  if [[ ! -f "/mnt/etc/pacman.d/mirrorlist" ]]; then
-    mirror_update
-  fi
-  chowd /mnt/etc/pacman.conf
-}
-
-function refresh_keys() {
-  sudo pacman-key --init
-  sudo pacman-key --populate archlinux
-  sudo pacman-key --refresh-keys
+  mkdir -p "$HOME/repos"
+  cd "$HOME/repos" || exit 1
+  echo "clone_repos(): override this in your own .bashrc."
 }
 EOF
 }
 
 #-------------------------------------------------------------------------------
-# Install setup-heini script
+# Install setup-heini script (intended for installed system)
 #-------------------------------------------------------------------------------
 function install_setup_heini_script() {
 	log "Installing setup-heini helper..."
@@ -971,7 +867,7 @@ else
 fi
 
 echo "Set password for root (if desired):"
-passwd
+passwd || true
 
 HOME_DIR="/home/${NEW_USER}"
 mkdir -p "${HOME_DIR}"
@@ -1052,6 +948,100 @@ EOF
 }
 
 #-------------------------------------------------------------------------------
+# post-pacstrap-setup helper:
+#   - Run in live ISO after pacstrap + fstab + basic config
+#   - Copies /etc configs and helper scripts into /mnt
+#   - Initializes and signs Chaotic-AUR and ZFS keys in the chroot
+#-------------------------------------------------------------------------------
+function install_post_pacstrap_helper() {
+	log "Installing post-pacstrap-setup helper..."
+
+	cat >"${ISO_ROOT}/usr/local/bin/post-pacstrap-setup" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+function log() {
+  printf '==> %s\n' "$*"
+}
+
+function ensure_mnt_root() {
+  if [[ ! -d /mnt/etc ]]; then
+    echo "ERROR: /mnt/etc not found. Did you run pacstrap and mount /mnt?" >&2
+    exit 1
+  fi
+}
+
+function copy_configs() {
+  log "Copying live /etc configs into /mnt/etc..."
+
+  install -Dm644 /etc/locale.conf /mnt/etc/locale.conf
+  install -Dm644 /etc/locale.gen /mnt/etc/locale.gen
+  install -Dm644 /etc/vconsole.conf /mnt/etc/vconsole.conf
+  install -Dm644 /etc/pacman.conf /mnt/etc/pacman.conf
+  install -Dm644 /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist
+
+  if [[ -f /etc/pacman.d/chaotic-mirrorlist ]]; then
+    install -Dm644 /etc/pacman.d/chaotic-mirrorlist \
+      /mnt/etc/pacman.d/chaotic-mirrorlist
+  fi
+
+  install -Dm440 /etc/sudoers /mnt/etc/sudoers
+}
+
+function copy_helpers() {
+  log "Copying helper scripts into /mnt/usr/local/bin..."
+  install -Dm755 /usr/local/bin/new-mirrors \
+    /mnt/usr/local/bin/new-mirrors || true
+  install -Dm755 /usr/local/bin/enable-chaotic-aur \
+    /mnt/usr/local/bin/enable-chaotic-aur || true
+  install -Dm755 /usr/local/bin/mkinitcpio-hooks-wizard \
+    /mnt/usr/local/bin/mkinitcpio-hooks-wizard || true
+  install -Dm755 /usr/local/bin/setup-heini \
+    /mnt/usr/local/bin/setup-heini || true
+}
+
+function setup_keys_in_chroot() {
+  log "Initializing pacman-key and importing Chaotic + ZFS keys in /mnt..."
+
+  arch-chroot /mnt /bin/bash <<'CHROOT_EOF'
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+pacman-key --init || true
+pacman-key --populate archlinux || true
+
+# Chaotic-AUR keys (same as enable-chaotic-aur)
+pacman-key -r FBA220DFC880C036 || true
+pacman-key --lsign-key FBA220DFC880C036 || true
+
+pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com || true
+pacman-key --lsign-key 3056513887B78AEB || true
+
+# ZFS / archzfs key (harmless even if archzfs repo is unused)
+pacman-key --recv-key DDF7DB817396A49B2A2723F7403BD972F75D9D76 \
+  --keyserver keyserver.ubuntu.com || true
+pacman-key --lsign-key DDF7DB817396A49B2A2723F7403BD972F75D9D76 || true
+CHROOT_EOF
+}
+
+function main() {
+  ensure_mnt_root
+  copy_configs
+  copy_helpers
+  setup_keys_in_chroot
+  log "post-pacstrap-setup finished."
+  log "You can now arch-chroot /mnt and use:"
+  log "  enable-chaotic-aur, mkinitcpio-hooks-wizard, setup-heini, etc."
+}
+
+main "$@"
+EOF
+
+	chmod 755 "${ISO_ROOT}/usr/local/bin/post-pacstrap-setup"
+}
+
+#-------------------------------------------------------------------------------
 # Build ISO with mkarchiso
 #-------------------------------------------------------------------------------
 function build_iso() {
@@ -1078,7 +1068,6 @@ function list_candidate_disks() {
 	lsblk -dpno NAME,TRAN,SIZE,MODEL,TYPE | awk '
     "$5" == "disk" {
       tag = ("$2" == "usb" ? "[USB]" : "     ");
-      # NAME, TRAN, SIZE, MODEL (may have spaces)
       printf "  %s %-15s %-4s %-8s %s\n", tag, "$1", "$2", "$3", "$4"
     }'
 	echo
@@ -1162,21 +1151,24 @@ function prompt_burn_iso() {
 # main
 #-------------------------------------------------------------------------------
 function main() {
-	parse_args "$@"
 	ensure_root
+	parse_args "$@"
+
+	log "Selected kernel flavor: ${KERNEL_FLAVOR} (ENABLE_ZFS=${ENABLE_ZFS})"
+
 	require_host_packages
 	prepare_profile
-	configure_kernel_packages "$KERNEL_CHOICE"
+	configure_kernel_packages
 	ensure_extra_tools
+	install_core_configs
 	install_pacman_conf
-	install_core_config_templates
 	install_mirrorlist
 	install_new_mirrors_helper
 	install_enable_chaotic_aur
 	install_mkinitcpio_hooks_wizard
 	install_bashrc_template
 	install_setup_heini_script
-	append_customize_airootfs_snippet
+	install_post_pacstrap_helper
 	build_iso
 	prompt_burn_iso
 }
