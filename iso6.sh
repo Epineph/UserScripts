@@ -58,14 +58,14 @@ ENABLE_ZFS="false"
 # Logging helper
 #-------------------------------------------------------------------------------
 function log() {
-	printf '==> %s\n' "$*"
+  printf '==> %s\n' "$*"
 }
 
 #-------------------------------------------------------------------------------
 # Usage
 #-------------------------------------------------------------------------------
 function usage() {
-	cat <<EOF
+  cat <<EOF
 ${SCRIPT_NAME} — build a custom Arch ISO with kernel + repo helpers.
 
 Usage:
@@ -96,205 +96,205 @@ EOF
 # Require running as root
 #-------------------------------------------------------------------------------
 function ensure_root() {
-	if [[ "$EUID" -ne 0 ]]; then
-		printf 'ERROR: Run this script as root (e.g. sudo %s)\n' \
-			"$SCRIPT_NAME" >&2
-		exit 1
-	fi
+  if [[ "$EUID" -ne 0 ]]; then
+    printf 'ERROR: Run this script as root (e.g. sudo %s)\n' \
+      "$SCRIPT_NAME" >&2
+    exit 1
+  fi
 }
 
 #-------------------------------------------------------------------------------
 # Host sanity checks
 #-------------------------------------------------------------------------------
 function require_host_packages() {
-	local pkgs=(archiso ddrescue reflector rsync curl)
-	local missing=()
+  local pkgs=(archiso ddrescue reflector rsync curl)
+  local missing=()
 
-	local p
-	for p in "${pkgs[@]}"; do
-		if ! pacman -Qq "$p" &>/dev/null; then
-			missing+=("$p")
-		fi
-	done
+  local p
+  for p in "${pkgs[@]}"; do
+    if ! pacman -Qq "$p" &>/dev/null; then
+      missing+=("$p")
+    fi
+  done
 
-	if ((${#missing[@]} > 0)); then
-		printf 'ERROR: Missing required host packages:\n' >&2
-		printf '  %s\n' "${missing[@]}" >&2
-		printf 'Install them with:\n  sudo pacman -S %s\n' \
-			"${missing[*]}" >&2
-		exit 1
-	fi
+  if ((${#missing[@]} > 0)); then
+    printf 'ERROR: Missing required host packages:\n' >&2
+    printf '  %s\n' "${missing[@]}" >&2
+    printf 'Install them with:\n  sudo pacman -S %s\n' \
+      "${missing[*]}" >&2
+    exit 1
+  fi
 }
 
 #-------------------------------------------------------------------------------
 # Argument parsing (KERNEL selection)
 #-------------------------------------------------------------------------------
 function parse_args() {
-	local positional_kernel=""
+  local positional_kernel=""
 
-	while (($#)); do
-		case "$1" in
-		# Positional-like kernel words, if used as first arg:
-		linux)
-			positional_kernel="linux"
-			shift
-			;;
-		lts | linux-lts)
-			positional_kernel="lts"
-			shift
-			;;
-		zfs)
-			positional_kernel="zfs"
-			ENABLE_ZFS="true"
-			shift
-			;;
-		-k | --kernel)
-			if [[ $# -lt 2 ]]; then
-				echo "ERROR: --kernel requires a value." >&2
-				usage
-				exit 1
-			fi
-			case "$2" in
-			linux)
-				KERNEL_FLAVOR="linux"
-				ENABLE_ZFS="false"
-				;;
-			lts | linux-lts)
-				KERNEL_FLAVOR="lts"
-				ENABLE_ZFS="false"
-				;;
-			zfs)
-				KERNEL_FLAVOR="zfs"
-				ENABLE_ZFS="true"
-				;;
-			*)
-				echo "ERROR: Unknown kernel flavor: $2" >&2
-				usage
-				exit 1
-				;;
-			esac
-			shift 2
-			;;
-		--lts)
-			KERNEL_FLAVOR="lts"
-			ENABLE_ZFS="false"
-			shift
-			;;
-		--zfs)
-			KERNEL_FLAVOR="zfs"
-			ENABLE_ZFS="true"
-			shift
-			;;
-		-h | --help)
-			usage
-			exit 0
-			;;
-		*)
-			echo "ERROR: Unknown argument: $1" >&2
-			usage
-			exit 1
-			;;
-		esac
-	done
+  while (($#)); do
+    case "$1" in
+    # Positional-like kernel words, if used as first arg:
+    linux)
+      positional_kernel="linux"
+      shift
+      ;;
+    lts | linux-lts)
+      positional_kernel="lts"
+      shift
+      ;;
+    zfs)
+      positional_kernel="zfs"
+      ENABLE_ZFS="true"
+      shift
+      ;;
+    -k | --kernel)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --kernel requires a value." >&2
+        usage
+        exit 1
+      fi
+      case "$2" in
+      linux)
+        KERNEL_FLAVOR="linux"
+        ENABLE_ZFS="false"
+        ;;
+      lts | linux-lts)
+        KERNEL_FLAVOR="lts"
+        ENABLE_ZFS="false"
+        ;;
+      zfs)
+        KERNEL_FLAVOR="zfs"
+        ENABLE_ZFS="true"
+        ;;
+      *)
+        echo "ERROR: Unknown kernel flavor: $2" >&2
+        usage
+        exit 1
+        ;;
+      esac
+      shift 2
+      ;;
+    --lts)
+      KERNEL_FLAVOR="lts"
+      ENABLE_ZFS="false"
+      shift
+      ;;
+    --zfs)
+      KERNEL_FLAVOR="zfs"
+      ENABLE_ZFS="true"
+      shift
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: Unknown argument: $1" >&2
+      usage
+      exit 1
+      ;;
+    esac
+  done
 
-	if [[ -n "$positional_kernel" ]]; then
-		KERNEL_FLAVOR="$positional_kernel"
-		[[ "$positional_kernel" == "zfs" ]] && ENABLE_ZFS="true"
-	fi
+  if [[ -n "$positional_kernel" ]]; then
+    KERNEL_FLAVOR="$positional_kernel"
+    [[ "$positional_kernel" == "zfs" ]] && ENABLE_ZFS="true"
+  fi
 
-	# Normalise
-	case "$KERNEL_FLAVOR" in
-	linux | "") KERNEL_FLAVOR="linux" ;;
-	lts | linux-lts) KERNEL_FLAVOR="lts" ;;
-	zfs) KERNEL_FLAVOR="zfs" ;;
-	*)
-		echo "ERROR: Internal kernel flavor state invalid: $KERNEL_FLAVOR" >&2
-		exit 1
-		;;
-	esac
+  # Normalise
+  case "$KERNEL_FLAVOR" in
+  linux | "") KERNEL_FLAVOR="linux" ;;
+  lts | linux-lts) KERNEL_FLAVOR="lts" ;;
+  zfs) KERNEL_FLAVOR="zfs" ;;
+  *)
+    echo "ERROR: Internal kernel flavor state invalid: $KERNEL_FLAVOR" >&2
+    exit 1
+    ;;
+  esac
 }
 
 #-------------------------------------------------------------------------------
 # Prepare releng profile copy
 #-------------------------------------------------------------------------------
 function prepare_profile() {
-	log "Copying releng profile to ${PROFILE_DIR}..."
-	rm -rf "$PROFILE_DIR"
-	mkdir -p "$PROFILE_DIR"
-	cp -a "${PROFILE_SRC}/." "${PROFILE_DIR}/"
-	mkdir -p "$WORK_DIR" "$ISO_OUT"
-	mkdir -p "${ISO_ROOT}/usr/local/bin" "${ISO_ROOT}/etc"
+  log "Copying releng profile to ${PROFILE_DIR}..."
+  rm -rf "$PROFILE_DIR"
+  mkdir -p "$PROFILE_DIR"
+  cp -a "${PROFILE_SRC}/." "${PROFILE_DIR}/"
+  mkdir -p "$WORK_DIR" "$ISO_OUT"
+  mkdir -p "${ISO_ROOT}/usr/local/bin" "${ISO_ROOT}/etc"
 }
 
 #-------------------------------------------------------------------------------
 # Configure kernel + (optionally) ZFS packages in packages.x86_64
 #-------------------------------------------------------------------------------
 function configure_kernel_packages() {
-	local pkg_file="${PROFILE_DIR}/packages.x86_64"
-	log "Configuring kernel packages in packages.x86_64 (${KERNEL_FLAVOR})..."
+  local pkg_file="${PROFILE_DIR}/packages.x86_64"
+  log "Configuring kernel packages in packages.x86_64 (${KERNEL_FLAVOR})..."
 
-	local pkgs=()
+  local pkgs=()
 
-	case "$KERNEL_FLAVOR" in
-	linux)
-		pkgs=(linux linux-headers)
-		;;
-	lts)
-		pkgs=(linux-lts linux-lts-headers)
-		;;
-	zfs)
-		pkgs=(
-			linux linux-headers
-			zfs-dkms
-			zfs-utils
-		)
-		;;
-	esac
+  case "$KERNEL_FLAVOR" in
+  linux)
+    pkgs=(linux linux-headers)
+    ;;
+  lts)
+    pkgs=(linux-lts linux-lts-headers)
+    ;;
+  zfs)
+    pkgs=(
+      linux linux-headers
+      zfs-dkms
+      zfs-utils
+    )
+    ;;
+  esac
 
-	local p
-	for p in "${pkgs[@]}"; do
-		if grep -qE "^[[:space:]]*${p}(\s|$)" "$pkg_file"; then
-			printf '  = %s (kernel/ZFS package already listed)\n' "$p"
-		else
-			printf '  + %s (kernel/ZFS package)\n' "$p"
-			echo "$p" >>"$pkg_file"
-		fi
-	done
+  local p
+  for p in "${pkgs[@]}"; do
+    if grep -qE "^[[:space:]]*${p}(\s|$)" "$pkg_file"; then
+      printf '  = %s (kernel/ZFS package already listed)\n' "$p"
+    else
+      printf '  + %s (kernel/ZFS package)\n' "$p"
+      echo "$p" >>"$pkg_file"
+    fi
+  done
 }
 
 #-------------------------------------------------------------------------------
 # Ensure extra tools in packages.x86_64
 #-------------------------------------------------------------------------------
 function ensure_extra_tools() {
-	log "Ensuring extra tools are present in packages.x86_64..."
+  log "Ensuring extra tools are present in packages.x86_64..."
 
-	local pkg_file="${PROFILE_DIR}/packages.x86_64"
-	local need=(
-		fzf lsof strace git gptfdisk bat fd reflector rsync
-		neovim eza lsd python-rich python-rapidfuzz parted gparted
-	)
+  local pkg_file="${PROFILE_DIR}/packages.x86_64"
+  local need=(
+    fzf lsof strace git gptfdisk bat fd reflector rsync
+    neovim eza lsd python-rich python-rapidfuzz parted gparted
+  )
 
-	local p
-	for p in "${need[@]}"; do
-		if grep -qE "^[[:space:]]*${p}(\s|$)" "$pkg_file"; then
-			printf '  = %s (already listed)\n' "$p"
-		else
-			printf '  + %s\n' "$p"
-			echo "$p" >>"$pkg_file"
-		fi
-	done
+  local p
+  for p in "${need[@]}"; do
+    if grep -qE "^[[:space:]]*${p}(\s|$)" "$pkg_file"; then
+      printf '  = %s (already listed)\n' "$p"
+    else
+      printf '  + %s\n' "$p"
+      echo "$p" >>"$pkg_file"
+    fi
+  done
 }
 
 #-------------------------------------------------------------------------------
 # Core configs directly into airootfs /etc (pre-chroot)
 #-------------------------------------------------------------------------------
 function install_core_configs() {
-	log "Installing core config templates into airootfs /etc..."
+  log "Installing core config templates into airootfs /etc..."
 
-	mkdir -p "${ISO_ROOT}/etc" "${ISO_ROOT}/etc/pacman.d"
+  mkdir -p "${ISO_ROOT}/etc" "${ISO_ROOT}/etc/pacman.d"
 
-	# Locale
-	cat >"${ISO_ROOT}/etc/locale.conf" <<'EOF'
+  # Locale
+  cat >"${ISO_ROOT}/etc/locale.conf" <<'EOF'
 LANG=en_DK.UTF-8
 LC_COLLATE=C
 LC_TIME=en_DK.UTF-8
@@ -304,59 +304,138 @@ LC_PAPER=en_DK.UTF-8
 LC_MEASUREMENT=en_DK.UTF-8
 EOF
 
-	cat >"${ISO_ROOT}/etc/locale.gen" <<'EOF'
+  cat >"${ISO_ROOT}/etc/locale.gen" <<'EOF'
 # Minimal locale.gen for custom ISO
 en_DK.UTF-8 UTF-8
 EOF
 
-	# vconsole
-	cat >"${ISO_ROOT}/etc/vconsole.conf" <<'EOF'
+  # vconsole
+  cat >"${ISO_ROOT}/etc/vconsole.conf" <<'EOF'
 XKBLAYOUT=dk
 KEYMAP=dk-latin1
 EOF
 
-
-
-	# sudoers
-	cat >"${ISO_ROOT}/etc/sudoers" <<'EOF'
-## Preserve editor environment variables for visudo.
-## To preserve these for all commands, remove the "!visudo" qualifier.
-
+  # sudoers
+  cat >"${ISO_ROOT}/etc/sudoers" <<'EOF'
 Defaults!/usr/bin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
-
+##
 ## Use a hard-coded PATH instead of the user's to find commands.
 ## This also helps prevent poorly written scripts from running
 ## arbitrary commands under sudo.
+Defaults secure_path="/home/heini/repos/vcpkg:/home/heini/.cargo/bin:/home/heini/bin:/home/heini/bin/bin:/usr/local/sbin:/usr/local/bin:/usr/bin"
+##
+## You may wish to keep some of the following environment variables
+## when running commands via sudo.
+##
+## Locale settings
+# Defaults env_keep += "LANG LANGUAGE LINGUAS LC_* _XKB_CHARSET"
+##
+## Run X applications through sudo; HOME is used to find the
+## .Xauthority file.  Note that other programs use HOME to find
+## configuration files and this may lead to privilege escalation!
+# Defaults env_keep += "HOME"
+##
+## X11 resource path settings
+# Defaults env_keep += "XAPPLRESDIR XFILESEARCHPATH XUSERFILESEARCHPATH"
+##
+## Desktop path settings
+# Defaults env_keep += "QTDIR KDEDIR"
+##
+## Allow sudo-run commands to inherit the callers' ConsoleKit session
+# Defaults env_keep += "XDG_SESSION_COOKIE"
+##
+## Uncomment to enable special input methods.  Care should be taken as
+## this may allow users to subvert the command being run via sudo.
+# Defaults env_keep += "XMODIFIERS GTK_IM_MODULE QT_IM_MODULE QT_IM_SWITCHER"
+##
+## Uncomment to disable "use_pty" when running commands as root.
+## Commands run as non-root users will run in a pseudo-terminal,
+## not the user's own terminal, to prevent command injection.
+# Defaults>root !use_pty
+##
+## Uncomment to run commands in the background by default.
+## This can be used to prevent sudo from consuming user input while
+## a non-interactive command runs if "use_pty" or I/O logging are
+## enabled.  Some commands may not run properly in the background.
+# Defaults exec_background
+##
+## Uncomment to send mail if the user does not enter the correct password.
+# Defaults mail_badpass
+##
+## Uncomment to enable logging of a command's output, except for
+## sudoreplay and reboot.  Use sudoreplay to play back logged sessions.
+## Sudo will create up to 2,176,782,336 I/O logs before recycling them.
+## Set maxseq to a smaller number if you don't have unlimited disk space.
+# Defaults log_output
+# Defaults!/usr/bin/sudoreplay !log_output
+# Defaults!/usr/local/bin/sudoreplay !log_output
+# Defaults!REBOOT !log_output
+# Defaults maxseq = 1000
+##
+## Uncomment to disable intercept and log_subcmds for debuggers and
+## tracers.  Otherwise, anything that uses ptrace(2) will be unable
+## to run under sudo if intercept_type is set to "trace".
+# Defaults!DEBUGGERS !intercept, !log_subcmds
+##
+## Uncomment to disable intercept and log_subcmds for package managers.
+## Some package scripts run a huge number of commands, which is made
+## slower by these options and also can clutter up the logs.
+# Defaults!PKGMAN !intercept, !log_subcmds
+##
+## Uncomment to disable PAM silent mode.  Otherwise messages by PAM
+## modules such as pam_faillock will not be printed.
+# Defaults !pam_silent
 
-EOF
+##
+## Runas alias specification
+##
 
-echo -e "\nDefaults secure_path="$custom_secure_path"\n\n" \
-  | sudo tee -a "${ISO_ROOT}/etc/sudoers" > /dev/null
+##
+## User privilege specification
+##
+root ALL=(ALL:ALL) ALL
 
-Defaults!/usr/bin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
-Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin"
+# heini ALL=(ALL:ALL) NOPASSWD: ALL
 
-root  ALL=(ALL:ALL) ALL
+## Uncomment to allow members of group wheel to execute any command
 %wheel ALL=(ALL:ALL) ALL
 
+## Same thing without a password
+# %wheel ALL=(ALL:ALL) NOPASSWD: ALL
+
+## Uncomment to allow members of group sudo to execute any command
+# %sudo	ALL=(ALL:ALL) ALL
+
+## Uncomment to allow any user to run sudo if they know the password
+## of the user they are running the command as (root by default).
+# Defaults targetpw  # Ask for the password of the target user
+# ALL ALL=(ALL:ALL) ALL  # WARNING: only use this together with 'Defaults targetpw'
+
+## Read drop-in files from /etc/sudoers.d
 @includedir /etc/sudoers.d
+
+# Use global timestamp for sudo authentication
+Defaults timestamp_type=global
+
+# Set sudo authentication timeout to 15 minutes
+Defaults timestamp_timeout=15
 EOF
 
-	chmod 440 "${ISO_ROOT}/etc/sudoers"
+  chmod 440 "${ISO_ROOT}/etc/sudoers"
 }
 
 #-------------------------------------------------------------------------------
 # Install pacman.conf (profile + live /etc)
 #-------------------------------------------------------------------------------
 function install_pacman_conf() {
-	log "Installing cleaned pacman.conf (core/extra/multilib + Chaotic-AUR \
+  log "Installing cleaned pacman.conf (core/extra/multilib + Chaotic-AUR \
 commented, archzfs if ZFS mode)..."
 
-	local dst="${PROFILE_DIR}/pacman.conf"
-	mkdir -p "$(dirname "$dst")"
+  local dst="${PROFILE_DIR}/pacman.conf"
+  mkdir -p "$(dirname "$dst")"
 
-	{
-		cat <<'EOF'
+  {
+    cat <<'EOF'
 [options]
 HoldPkg      = pacman glibc
 Architecture = auto
@@ -382,8 +461,8 @@ Include = /etc/pacman.d/mirrorlist
 #Include = /etc/pacman.d/chaotic-mirrorlist
 EOF
 
-		if [[ "$ENABLE_ZFS" == "true" ]]; then
-			cat <<'EOF'
+    if [[ "$ENABLE_ZFS" == "true" ]]; then
+      cat <<'EOF'
 
 [archzfs]
 SigLevel = Optional TrustAll
@@ -396,34 +475,34 @@ Server = http://mirror.sunred.org/archzfs/$repo/$arch
 # Mirror - Germany
 Server = https://mirror.biocrafting.net/archlinux/archzfs/$repo/$arch
 EOF
-		fi
-	} >"$dst"
+    fi
+  } >"$dst"
 
-	# Use the same pacman.conf inside the live ISO pre-chroot environment.
-	mkdir -p "${ISO_ROOT}/etc"
-	cp "$dst" "${ISO_ROOT}/etc/pacman.conf"
+  # Use the same pacman.conf inside the live ISO pre-chroot environment.
+  mkdir -p "${ISO_ROOT}/etc"
+  cp "$dst" "${ISO_ROOT}/etc/pacman.conf"
 }
 
 #-------------------------------------------------------------------------------
 # Copy current mirrorlist into ISO (pre-chroot /etc)
 #-------------------------------------------------------------------------------
 function install_mirrorlist() {
-	log "Copying current system mirrorlist to ISO..."
-	if [[ ! -f /etc/pacman.d/mirrorlist ]]; then
-		echo "WARNING: /etc/pacman.d/mirrorlist not found on host." >&2
-		return 0
-	fi
-	mkdir -p "${ISO_ROOT}/etc/pacman.d"
-	cp /etc/pacman.d/mirrorlist "${ISO_ROOT}/etc/pacman.d/mirrorlist"
+  log "Copying current system mirrorlist to ISO..."
+  if [[ ! -f /etc/pacman.d/mirrorlist ]]; then
+    echo "WARNING: /etc/pacman.d/mirrorlist not found on host." >&2
+    return 0
+  fi
+  mkdir -p "${ISO_ROOT}/etc/pacman.d"
+  cp /etc/pacman.d/mirrorlist "${ISO_ROOT}/etc/pacman.d/mirrorlist"
 }
 
 #-------------------------------------------------------------------------------
 # Install new-mirrors helper into ISO
 #-------------------------------------------------------------------------------
 function install_new_mirrors_helper() {
-	log "Installing new-mirrors helper..."
+  log "Installing new-mirrors helper..."
 
-	cat >"${ISO_ROOT}/usr/local/bin/new-mirrors" <<'EOF'
+  cat >"${ISO_ROOT}/usr/local/bin/new-mirrors" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -462,7 +541,7 @@ sudo reflector --verbose \
 echo "Mirrorlist updated via reflector."
 EOF
 
-	chmod 755 "${ISO_ROOT}/usr/local/bin/new-mirrors"
+  chmod 755 "${ISO_ROOT}/usr/local/bin/new-mirrors"
 }
 
 #-------------------------------------------------------------------------------
@@ -470,9 +549,9 @@ EOF
 #  - Intended to run in whatever root is current (/ or chroot)
 #-------------------------------------------------------------------------------
 function install_enable_chaotic_aur() {
-	log "Installing enable-chaotic-aur helper..."
+  log "Installing enable-chaotic-aur helper..."
 
-	cat >"${ISO_ROOT}/usr/local/bin/enable-chaotic-aur" <<'EOF'
+  cat >"${ISO_ROOT}/usr/local/bin/enable-chaotic-aur" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -521,16 +600,16 @@ pacman -Syy
 echo "Chaotic-AUR is enabled in the current root."
 EOF
 
-	chmod 755 "${ISO_ROOT}/usr/local/bin/enable-chaotic-aur"
+  chmod 755 "${ISO_ROOT}/usr/local/bin/enable-chaotic-aur"
 }
 
 #-------------------------------------------------------------------------------
 # Install mkinitcpio-hooks-wizard into ISO
 #-------------------------------------------------------------------------------
 function install_mkinitcpio_hooks_wizard() {
-	log "Installing mkinitcpio-hooks-wizard..."
+  log "Installing mkinitcpio-hooks-wizard..."
 
-	cat >"${ISO_ROOT}/usr/local/bin/mkinitcpio-hooks-wizard" <<'EOF'
+  cat >"${ISO_ROOT}/usr/local/bin/mkinitcpio-hooks-wizard" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -812,37 +891,244 @@ function main() {
 main "$@"
 EOF
 
-	chmod 755 "${ISO_ROOT}/usr/local/bin/mkinitcpio-hooks-wizard"
+  chmod 755 "${ISO_ROOT}/usr/local/bin/mkinitcpio-hooks-wizard"
 }
 
 #-------------------------------------------------------------------------------
 # Install install-bashrc.example (from host or fallback template)
 #-------------------------------------------------------------------------------
 function install_bashrc_template() {
-	log "Installing install-bashrc.example..."
+  log "Installing install-bashrc.example..."
 
-	mkdir -p "${ISO_ROOT}/root"
+  mkdir -p "${ISO_ROOT}/root"
 
-	if [[ -f "/root/.bashrc" ]]; then
-		cp "/root/.bashrc" "${ISO_ROOT}/root/install-bashrc.example"
-		return 0
-	fi
+  if [[ -f "/root/.bashrc" ]]; then
+    cp "/root/.bashrc" "${ISO_ROOT}/root/install-bashrc.example"
+    return 0
+  fi
 
-	cat >"${ISO_ROOT}/root/install-bashrc.example" <<'EOF'
-# .bashrc template for new user "heini"
+  cat >"${ISO_ROOT}/root/install-bashrc.example" <<'EOF'
+#
+# ~/.bashrc
+#
+if [ "$(whoami)" != "root" ]; then sudo -s "$0"
+# If not running interactively, don't do anything
+[[ $- != *i* ]] && return
 
-# Aliases
-alias ll='ls -alF'
-alias la='ls -A'
-alias l='ls -CF'
-
-# Prompt
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
 PS1='[\u@\h \W]\$ '
 
+#source /etc/profile.d/cuda.sh
+
+export LANGUAGE=en_DK.UTF-8
+export LC_ALL=C.UTF-8
+export LOC_BIN=/usr/local/bin
+export CARGO_BIN=$HOME/.cargo/bin
+export REPOS=$HOME/repos
+
+export PATH=$LOC_BIN:$HOME/.cargo/bin:$HOME/bin:$HOME/bin/bin:$REPOS/vcpkg:$PATH
+
+function clone () {
+	local repo=$1
+	local target_dir=$REPOS
+	local build_dir=~/build_src_dir
+	mkdir -p "$build_dir"
+	if [[ $repo == http* ]]; then
+	  if [[ $repo == *aur.archlinux.org* ]]; then
+	    git -C "$build_dir" clone "$repo"
+
+	    local repo_name=$(basename "$repo" .git)
+
+			pushd "$build_dir/$repo_name" > /dev/null
+
+			if [[ $target_dir == "build" ]]; then
+			  makepkg --syncdeps
+			elif [[ $target_dir == "install" ]]; then
+			  makepkg -si
+			fi
+			popd > /dev/null
+		else
+			git clone "$repo" "$target_dir"
+		fi
+	else
+		git -C "$REPOS" clone "https://github.com/$repo.git" --recurse-submodules
+	fi
+}
+
+function get_scripts() {
+    if [[ ! -f "/mnt/sshd_config" ]]; then
+        sudo mount /dev/sda3 /mnt
+        if [[ -f "/usr/local/bin/update_mirrors2" ]]; then
+            sudo cp /mnt/etc/sshd_config /etc/ssh/sshd_conf
+            sudo cp /mnt/etc/pacman.conf /etc/pacman.conf
+            sudo cp /mnt/etc/mkinitcpio.conf /etc/mkinitcpio.conf
+            sudo cp /mnt/scripts/* /usr/local/bin
+        fi
+    sudo umount /mnt
+    fi
+    echo "run chowd function on $LOC_BIN"
+}
+
+
+
+function chowd() {
+    local DIR_NAME=${1:-$LOC_BIN}
+  sudo chown -R "$USER" "$DIR_NAME"
+  sudo chmod -R 777 "$DIR_NAME"
+  source "$HOME"/.bashrc
+  echo "Changed ownership and permissions for $DIR_NAME"
+  echo "Consider running clone_repos function"
+}
+
 function clone_repos() {
-  mkdir -p "$HOME/repos"
-  cd "$HOME/repos" || exit 1
-  echo "clone_repos(): override this in your own .bashrc."
+    if [[ ! -d "$HOME/repos" ]]; then
+        sudo mkdir -p "$HOME"/repos
+        sudo chmod 777 -R "$HOME"/repos
+        sudo chmod -R "$USER" "$HOME"/repos
+    fi
+    if [[ ! -d "$HOME/repos/UserScripts" ]]; then
+        yes | sudo pacman -Syy --needed reflector rsync git
+        sudo git -C "$REPOS" clone https://github.com/Epineph/UserScripts
+        sudo git -C "$REPOS" clone https://github.com/Epineph/nvim_conf
+        sudo git -C "$REPOS" clone https://gihtub.com/Epineph/generate_install_command
+        sudo git -C "$REPOS" clone https://github.com/Epineph/my_zshrc
+        sudo git -C "$REPOS" clone https://github.com/JaKooLit/Arch-Hyprland
+        sudo git -C "$REPOS" clone https://aur.archlinux.org/yay.git
+        sudo git -C "$REPOS" clone https://aur.archlinux.org/paru.git
+    fi
+    chowd "$REPOS"
+    if [[ ! -d "$HOME/bin" ]]; then
+        sudo mkdir -p "$HOME"/bin/bin
+    fi
+}
+
+
+
+alias mk_mntfiles='sudo mkdir /mnt/{etc/pacman.d,etc/ssh,home,efi,boot}; echo "/etc/pacman.d
+/etc/ssh /home /efi /boot was created on mounted partition"'
+alias mirror_update='sudo "$(which update_mirrors)"; echo "copying mirrors to new system"; sl
+eep 1; sudo cp /etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist; sleep 1; echo "mirrorli
+st was copied to /mnt"; sleep 1; echo "syncing mirrors"; sudo pacman -Syyy; echo "done!"'
+
+function create_mnt_fs() {
+    if [[ ! -d "/mnt/etc" ]]; then
+        mk_mntfiles
+    fi
+    if [[ ! -f "/mnt/etc/pacman.conf" ]]; then
+        sudo cp /etc/pacman.conf /mnt/etc/pacman.conf
+        sudo cp /etc/mkinitcpio.conf /mnt/etc/mkinitcpio.conf
+        sudo cp /etc/ssh/sshd_config /mnt/etc/ssh/sshd_config
+    fi
+    if [[ ! -f "/mnt/etc/pacman.d/mirrorlist" ]]; then
+        mirror_update
+    fi
+    chowd /mnt/etc/pacman.conf
+}
+
+function refresh_keys() {
+    sudo pacman-key --init
+    sudo pacman-key --populate archlinux
+    sudo pacman-key --refresh-keys
+}
+
+function amd_pacstrap() {
+    gen_log sudo pacstrap -P -K /mnt base base-devel lsof \
+		strace rsync reflector linux linux-headers linux-firmware \
+		alsa-utils efibootmgr networkmanager cpupower sudo nano \
+		neovim mtools dosfstools pacrunner java-runtime java-environment \
+		java-rhino amd-ucode xdg-user-dirs xdg-utils python-setuptools \
+		python-scipy python-numpy python-pandas python-numba lldb gdb cmake \
+		ninja zip unzip lzop lz4 exfatprogs ntfs-3g xorg-xauth git github-cli \
+		devtools reflector rsync wget curl coreutils iptables inetutils \
+		openssh lvm2 roctracer rocsolver rocrand rocm-smi-lib rocm-opencl-sdk \
+		rocm-opencl-runtime rocm-ml-libraries rocm-llvm rocm-language-runtime \
+		rocm-hip-sdk rocm-hip-libraries texlive-mathscience texlive-latexextra \
+		torchvision qt5 qt6 qt5-base qt6-base vulkan-radeon vulkan-headers \
+		vulkan-extra-layers volk vkmark vkd3d spirv-tools python-glfw amdvlk \
+		vulkan-mesa-layers vulkan-tools vulkan-utility-libraries archiso \
+		arch-install-scripts archinstall uutils-coreutils progress grub \
+		glib2-devel glibc-locales gcc-fortran gcc libcap-ng libcurl-compat \
+		libcurl-gnutls libgccjit grub fuse3 freetype2 libisoburn os-prober \
+		minizip lzo libxcrypt-compat libxcrypt xca tpm2-tss-engine \
+		tpm2-openssl ruby python-service-identity python-pyopenssl \
+		python-ndg-httpsclient pkcs11-provider perl-net-ssleay \
+		perl-crypt-ssleay perl-crypt-openssl-rsa extra-cmake-modules \
+		corrosion python-capng git-bug git-cinnabar git-cliff git-crypt \
+		git-delta git-evtag git-filter-repo git-grab git-lfs gitea gitg \
+		openssh tk perl-libwww perl-term-readkey perl-io-socket-ssl \
+		perl-authen-sasl perl-mediawiki-api perl-mediawiki-api \
+		perl-datetime-format-iso8601 perl-lwp-protocol-https \
+		perl-lwp-protocol-https perl-cgi subversion org.freedesktop.secrets \
+		alsa-utils efibootmgr networkmanager cpupower sudo nano neovim mtools \
+		dosfstools pacrunner java-runtime java-environment java-rhino amd-ucode \
+		xdg-user-dirs xdg-utils xf86-video-nouveau python-setuptools \
+		python-scipy python-numpy python-pandas python-numba lldb gdb cmake \
+		ninja zip unzip lzop lz4 exfatprogs ntfs-3g xorg-xauth git github-cli \
+		devtools reflector rsync wget curl coreutils iptables inetutils openssh \
+		lvm2 texlive-mathscience texlive-latexextra qt5 qt6 qt5-base qt6-base \
+		vulkan-headers vulkan-extra-layers volk vkmark vkd3d spirv-tools \
+		python-glfw amdvlk vulkan-mesa-layers vulkan-tools \
+		vulkan-utility-libraries archiso arch-install-scripts archinstall \
+		uutils-coreutils progress grub glib2-devel glibc-locales gcc-fortran \
+		gcc libcap-ng libcurl-compat libcurl-gnutls libgccjit grub libisoburn \
+		os-prober minizip lzo libxcrypt-compat libxcrypt xca tpm2-tss-engine \
+		tpm2-openssl ruby python-service-identity python-pyopenssl \
+		python-ndg-httpsclient pkcs11-provider perl-net-ssleay perl-crypt-ssleay \
+		perl-crypt-openssl-rsa extra-cmake-modules corrosion python-capng \
+		git-bug git-cinnabar git-cliff git-crypt git-delta git-evtag \
+		git-filter-repo git-grab git-lfs gitea gitg hipify-clang \
+		python-tensorflow-opt tensorflow-opt texlive-luatex icu egl-gbm \
+		egl-wayland egl-x11 ffnvcodec-headers libvdpau libmfx  openipmi openpgl \
+		openvkl presage python-intelhex throttled tipp10  vpl-gpu-rt
+}
+
+function nvidia_pacstrap() {
+	gen_log sudo pacstrap -P -K /mnt base base-devel lsof strace rsync \
+	reflector linux linux-headers linux-firmware alsa-utils efibootmgr \
+	networkmanager cpupower sudo nano neovim mtools dosfstools pacrunner \
+	java-runtime java-environment java-rhino intel-ucode xdg-user-dirs \
+	xdg-utils python-setuptools python-scipy python-numpy python-pandas \
+	python-numba lldb gdb cmake ninja zip unzip lzop lz4 exfatprogs ntfs-3g \
+	xorg-xauth git github-cli devtools reflector rsync wget curl coreutils \
+	iptables inetutils openssh lvm2 texlive-mathscience texlive-latexextra \
+	torchvision cuda cuda-tools cudnn nvidia-dkms nvidia-settings \
+	nvidia-utils qt5 qt6 qt5-base qt6-base vulkan-headers vulkan-extra-layers \
+	volk vkmark vkd3d spirv-tools python-glfw vulkan-tools \
+	vulkan-utility-libraries archiso arch-install-scripts archinstall \
+	uutils-coreutils progress grub glib2-devel glibc-locales gcc-fortran \
+	gcc libcap-ng libcurl-compat libcurl-gnutls libgccjit grub fuse3 \
+	freetype2 libisoburn os-prober minizip lzo libxcrypt-compat libxcrypt \
+	xca tpm2-tss-engine tpm2-openssl ruby python-service-identity \
+	python-pyopenssl python-ndg-httpsclient pkcs11-provider perl-net-ssleay \
+	perl-crypt-ssleay perl-crypt-openssl-rsa extra-cmake-modules corrosion \
+	python-capng git-bug git-cinnabar git-cliff git-crypt git-delta \
+	git-evtag git-filter-repo git-grab git-lfs gitea gitg openssh tk \
+	perl-libwww perl-term-readkey perl-io-socket-ssl perl-authen-sasl \
+	perl-mediawiki-api perl-mediawiki-api perl-datetime-format-iso8601 \
+	perl-lwp-protocol-https perl-lwp-protocol-https perl-cgi \
+	subversion org.freedesktop.secrets alsa-utils efibootmgr networkmanager \
+	cpupower sudo nano neovim mtools dosfstools pacrunner java-runtime \
+	java-environment java-rhino intel-ucode xdg-user-dirs xdg-utils \
+	xf86-video-nouveau python-setuptools python-scipy python-numpy \
+	python-pandas python-numba lldb gdb cmake ninja zip unzip lzop lz4 \
+	exfatprogs ntfs-3g xorg-xauth git github-cli devtools reflector \
+	rsync wget curl coreutils iptables inetutils openssh lvm2 \
+	texlive-mathscience texlive-latexextra qt5 qt6 qt5-base qt6-base \
+	vulkan-headers vulkan-extra-layers volk vkmark vkd3d spirv-tools \
+	 vulkan-tools vulkan-utility-libraries archiso arch-install-scripts \
+	 archinstall uutils-coreutils progress grub glib2-devel glibc-locales \
+	 gcc-fortran gcc libcap-ng libcurl-compat libcurl-gnutls libgccjit \
+	 grub libisoburn os-prober minizip lzo libxcrypt-compat libxcrypt \
+	 xca tpm2-tss-engine tpm2-openssl ruby python-service-identity \
+	 python-pyopenssl python-ndg-httpsclient pkcs11-provider perl-net-ssleay \
+	 perl-crypt-ssleay perl-crypt-openssl-rsa extra-cmake-modules corrosion \
+	 python-capng git-bug git-cinnabar git-cliff git-crypt git-delta \
+	 git-evtag git-filter-repo git-grab git-lfs gitea gitg hipify-clang \
+	 python-tensorflow-opt tensorflow-opt texlive-luatex icu egl-gbm \
+	 egl-wayland egl-x11 ffnvcodec-headers libvdpau libmfx openipmi \
+	 openpgl openvkl presage python-intelhex throttled tipp10 vpl-gpu-rt
+
 }
 EOF
 }
@@ -851,15 +1137,23 @@ EOF
 # Install setup-heini script (intended for installed system)
 #-------------------------------------------------------------------------------
 function install_setup_heini_script() {
-	log "Installing setup-heini helper..."
+  log "Installing setup-heini helper..."
 
-	cat >"${ISO_ROOT}/usr/local/bin/setup-heini" <<'EOF'
+  cat >"${ISO_ROOT}/usr/local/bin/setup-heini" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 IFS=$'\n\t'
 
+function force-root-exec() {
+  if [ "$(whoami)" != "root" ]; then
+    sudo su -s "$0"
+		exit
+	fI
+}
+
 if [[ $EUID -ne 0 ]]; then
-  echo "ERROR: setup-heini must be run as root." >&2
+  force-root-exec && echo "Running as $(whoami)"
+	echo "ERROR: setup-heini must be run as root." >&2
   exit 1
 fi
 
@@ -872,7 +1166,7 @@ if id "${NEW_USER}" &>/dev/null; then
   echo "User ${NEW_USER} already exists; skipping creation."
 else
   echo "==> Creating user ${NEW_USER}..."
-  useradd -m -s /bin/bash -G wheel,storage,power,video,audio,input \
+  useradd -m -s /bin/bash -G wheel,storage,power,video,audio,input,adm \
     "${NEW_USER}"
   echo "Set password for ${NEW_USER}:"
   passwd "${NEW_USER}"
@@ -936,9 +1230,32 @@ if [[ "${and}" == "y" || "${and}" == "yes" ]]; then
     if declare -F clone_repos >/dev/null 2>&1; then
       echo "Running clone_repos()..."
       clone_repos
+			sudo chown -R heini "$HOME/repos"
+			sudo chmod -R 777 "$HOME/repos"
+			if [[ ! -d "$HOME/repos/generate_install_command" ]]; then
+			  echo "Repo: $HOME/repos/generate_install_command not found"
+				echo "Cloning it: "
+			  (cd $HOME/repos && git clone \
+				https://github.com/Epineph/generate_install_command)
+				sudo chown -R heini "$HOME/repos"
+				sudo chmod -R 777 "$HOME/repos"
+
     else
       echo "clone_repos() not defined in ~/.bashrc; skipping."
     fi
+
+		if [[ -d "$HOME/repos/UserScripts" ]]; then
+		  (cd "$HOME/repos/UserScripts" && sudo ./save-scripts.sh useful_scripts/*)
+		else
+		  (cd "$HOME/repos" && git clone https://github.com/Epineph/UserScripts \
+			&& sudo chown -R heini "$HOME/repos" && sudo chmod -R 777 "$HOME/repos")
+		fi
+		if [[ ! -f "/usr/local/bin/gen_log" ]]; then
+		  (cd "$HOME/repos/UserScripts" && sudo ./save-scripts.sh useful_scripts/*)
+		fi
+		sudo chown -R heini /usr/local/bin
+		sudo chmod -R 777 /usr/local/bin
+		source $HOME/.bashrc
   '
 else
   echo "Skipping bootstrap step."
@@ -956,7 +1273,7 @@ fi
 echo "setup-heini completed."
 EOF
 
-	chmod 755 "${ISO_ROOT}/usr/local/bin/setup-heini"
+  chmod 755 "${ISO_ROOT}/usr/local/bin/setup-heini"
 }
 
 #-------------------------------------------------------------------------------
@@ -966,9 +1283,9 @@ EOF
 #   - Initializes and signs Chaotic-AUR and ZFS keys in the chroot
 #-------------------------------------------------------------------------------
 function install_post_pacstrap_helper() {
-	log "Installing post-pacstrap-setup helper..."
+  log "Installing post-pacstrap-setup helper..."
 
-	cat >"${ISO_ROOT}/usr/local/bin/post-pacstrap-setup" <<'EOF'
+  cat >"${ISO_ROOT}/usr/local/bin/post-pacstrap-setup" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -1037,6 +1354,7 @@ pacman-key --lsign-key DDF7DB817396A49B2A2723F7403BD972F75D9D76 || true
 CHROOT_EOF
 }
 
+
 function main() {
   ensure_mnt_root
   copy_configs
@@ -1050,139 +1368,139 @@ function main() {
 main "$@"
 EOF
 
-	chmod 755 "${ISO_ROOT}/usr/local/bin/post-pacstrap-setup"
+  chmod 755 "${ISO_ROOT}/usr/local/bin/post-pacstrap-setup"
 }
 
 #-------------------------------------------------------------------------------
 # Build ISO with mkarchiso
 #-------------------------------------------------------------------------------
 function build_iso() {
-	log "Building ISO with mkarchiso..."
-	mkarchiso -v -w "$WORK_DIR" -o "$ISO_OUT" "$PROFILE_DIR"
-	log "ISO built in: ${ISO_OUT}"
+  log "Building ISO with mkarchiso..."
+  mkarchiso -v -w "$WORK_DIR" -o "$ISO_OUT" "$PROFILE_DIR"
+  log "ISO built in: ${ISO_OUT}"
 }
 
 #-------------------------------------------------------------------------------
 # Helpers for USB burning
 #-------------------------------------------------------------------------------
 function find_latest_iso() {
-	local iso
-	iso="$(ls -1 "$ISO_OUT"/*.iso 2>/dev/null | sort | tail -n1 || true)"
-	if [[ -z "$iso" ]]; then
-		echo "ERROR: No ISO file found in ${ISO_OUT}" >&2
-		return 1
-	fi
-	printf '%s\n' "$iso"
+  local iso
+  iso="$(ls -1 "$ISO_OUT"/*.iso 2>/dev/null | sort | tail -n1 || true)"
+  if [[ -z "$iso" ]]; then
+    echo "ERROR: No ISO file found in ${ISO_OUT}" >&2
+    return 1
+  fi
+  printf '%s\n' "$iso"
 }
 
 function list_candidate_disks() {
-	echo "Candidate disks (USB marked when detectable):"
-	lsblk -dpno NAME,TRAN,SIZE,MODEL,TYPE | awk '
+  echo "Candidate disks (USB marked when detectable):"
+  lsblk -dpno NAME,TRAN,SIZE,MODEL,TYPE | awk '
     "$5" == "disk" {
       tag = ("$2" == "usb" ? "[USB]" : "     ");
       printf "  %s %-15s %-4s %-8s %s\n", tag, "$1", "$2", "$3", "$4"
     }'
-	echo
-	echo "Verify carefully before selecting a target; choosing the wrong disk"
-	echo "will destroy its contents."
+  echo
+  echo "Verify carefully before selecting a target; choosing the wrong disk"
+  echo "will destroy its contents."
 }
 
 function unmount_device_partitions() {
-	local dev="$1"
-	local parts
+  local dev="$1"
+  local parts
 
-	parts="$(lsblk -lnpo NAME "$dev" | tail -n +2 || true)"
-	if [[ -z "$parts" ]]; then
-		return 0
-	fi
+  parts="$(lsblk -lnpo NAME "$dev" | tail -n +2 || true)"
+  if [[ -z "$parts" ]]; then
+    return 0
+  fi
 
-	echo "Unmounting any mounted partitions on ${dev}..."
-	local p m
-	while read -r p; do
-		m="$(awk -v d="$p" '"$1"==d {print "$2"}' /proc/self/mounts | head -n1)"
-		if [[ -n "$m" ]]; then
-			echo "  umount ${m}"
-			umount "$m"
-		fi
-	done <<<"$parts"
+  echo "Unmounting any mounted partitions on ${dev}..."
+  local p m
+  while read -r p; do
+    m="$(awk -v d="$p" '"$1"==d {print "$2"}' /proc/self/mounts | head -n1)"
+    if [[ -n "$m" ]]; then
+      echo "  umount ${m}"
+      umount "$m"
+    fi
+  done <<<"$parts"
 }
 
 #-------------------------------------------------------------------------------
 # Ask user whether to burn ISO to USB, then run ddrescue if confirmed
 #-------------------------------------------------------------------------------
 function prompt_burn_iso() {
-	local and
+  local and
 
-	echo
-	log "ISO build complete."
-	read -r -p "Burn ISO to a USB stick now? [y/N]: " and
-	and="${and,,}"
-	if [[ "$and" != "y" && "$and" != "yes" ]]; then
-		log "Skipping USB burning step."
-		return 0
-	fi
+  echo
+  log "ISO build complete."
+  read -r -p "Burn ISO to a USB stick now? [y/N]: " and
+  and="${and,,}"
+  if [[ "$and" != "y" && "$and" != "yes" ]]; then
+    log "Skipping USB burning step."
+    return 0
+  fi
 
-	local iso
-	if ! iso="$(find_latest_iso)"; then
-		return 1
-	fi
+  local iso
+  if ! iso="$(find_latest_iso)"; then
+    return 1
+  fi
 
-	echo
-	echo "ISO to be written:"
-	echo "  ${iso}"
-	echo
-	list_candidate_disks
+  echo
+  echo "ISO to be written:"
+  echo "  ${iso}"
+  echo
+  list_candidate_disks
 
-	local dev
-	read -r -p "Enter target device path (e.g. /dev/sdX, /dev/nvme0n1): " dev
+  local dev
+  read -r -p "Enter target device path (e.g. /dev/sdX, /dev/nvme0n1): " dev
 
-	if [[ -z "$dev" || ! -b "$dev" ]]; then
-		echo "ERROR: '"$dev"' is not a valid block device." >&2
-		return 1
-	fi
+  if [[ -z "$dev" || ! -b "$dev" ]]; then
+    echo "ERROR: '"$dev"' is not a valid block device." >&2
+    return 1
+  fi
 
-	echo
-	echo "WARNING: All data on ${dev} will be IRREVERSIBLY DESTROYED."
-	read -r -p "Type 'YES' (all caps) to continue: " and
-	if [[ "$and" != "YES" ]]; then
-		echo "Aborted; not writing to ${dev}."
-		return 1
-	fi
+  echo
+  echo "WARNING: All data on ${dev} will be IRREVERSIBLY DESTROYED."
+  read -r -p "Type 'YES' (all caps) to continue: " and
+  if [[ "$and" != "YES" ]]; then
+    echo "Aborted; not writing to ${dev}."
+    return 1
+  fi
 
-	unmount_device_partitions "$dev"
+  unmount_device_partitions "$dev"
 
-	echo
-	log "Running: ddrescue -v --force \"${iso}\" \"${dev}\""
-	ddrescue -v --force "$iso" "$dev"
-	sync
-	echo
-	log "USB write finished. You can now try booting from ${dev}."
+  echo
+  log "Running: ddrescue -v --force \"${iso}\" \"${dev}\""
+  ddrescue -v --force "$iso" "$dev"
+  sync
+  echo
+  log "USB write finished. You can now try booting from ${dev}."
 }
 
 #-------------------------------------------------------------------------------
 # main
 #-------------------------------------------------------------------------------
 function main() {
-	ensure_root
-	parse_args "$@"
+  ensure_root
+  parse_args "$@"
 
-	log "Selected kernel flavor: ${KERNEL_FLAVOR} (ENABLE_ZFS=${ENABLE_ZFS})"
+  log "Selected kernel flavor: ${KERNEL_FLAVOR} (ENABLE_ZFS=${ENABLE_ZFS})"
 
-	require_host_packages
-	prepare_profile
-	configure_kernel_packages
-	ensure_extra_tools
-	install_core_configs
-	install_pacman_conf
-	install_mirrorlist
-	install_new_mirrors_helper
-	install_enable_chaotic_aur
-	install_mkinitcpio_hooks_wizard
-	install_bashrc_template
-	install_setup_heini_script
-	install_post_pacstrap_helper
-	build_iso
-	prompt_burn_iso
+  require_host_packages
+  prepare_profile
+  configure_kernel_packages
+  ensure_extra_tools
+  install_core_configs
+  install_pacman_conf
+  install_mirrorlist
+  install_new_mirrors_helper
+  install_enable_chaotic_aur
+  install_mkinitcpio_hooks_wizard
+  install_bashrc_template
+  install_setup_heini_script
+  install_post_pacstrap_helper
+  build_iso
+  prompt_burn_iso
 }
 
 main "$@"

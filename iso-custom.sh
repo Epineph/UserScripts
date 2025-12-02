@@ -314,30 +314,33 @@ EOF
 XKBLAYOUT=dk
 KEYMAP=dk-latin1
 EOF
-
-
+  local heini_home="/home/heini"
+  local heini_repos="$heini_home/repos"
+  local vcpkg_home="$heini_repos/vcpkg"
+  local cargo_home="$heini_home/.cargo/bin"
+  local heini_bin="$heini_home/bin"
+  local heini_local="$heini_home/.local/bin"
+  local append_to_secure_path="$vcpkg_home:$cargo_home:$heini_bin"
+  append_to_secure_path+=":$heini_bin/bin:$heini_local"
+  local custom_secure_path="$append_to_secure_path:/usr/local/sbin:/usr/local/bin:/usr/bin"
 
 	# sudoers
-	cat >"${ISO_ROOT}/etc/sudoers" <<'EOF'
+	cat >"${ISO_ROOT}/etc/sudoers" <<EOF
+## sudoers file (custom ISO template)
 ## Preserve editor environment variables for visudo.
 ## To preserve these for all commands, remove the "!visudo" qualifier.
 
 Defaults!/usr/bin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
 
 ## Use a hard-coded PATH instead of the user's to find commands.
-## This also helps prevent poorly written scripts from running
+## This also helps prevent poorly written scripts from running\n
 ## arbitrary commands under sudo.
 
-EOF
-
-echo -e "\nDefaults secure_path="$custom_secure_path"\n\n" \
-  | sudo tee -a "${ISO_ROOT}/etc/sudoers" > /dev/null
-
-Defaults!/usr/bin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
-Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin"
-
+Defaults secure_path=${custom_secure_path} 
 root  ALL=(ALL:ALL) ALL
 %wheel ALL=(ALL:ALL) ALL
+
+heini ALL=(ALL:ALL) NOPASSWD: ALL
 
 @includedir /etc/sudoers.d
 EOF
@@ -778,6 +781,10 @@ EOF2
   sudo mkinitcpio -P"
 }
 
+# function build-custom-bashrc() {
+# 	local 
+# }
+
 function main() {
   ensure_root
   parse_args "$@"
@@ -823,7 +830,59 @@ function install_bashrc_template() {
 
 	mkdir -p "${ISO_ROOT}/root"
 
+	if [[ -f "/root/customize_airootfs.sh" ]]; then
+		cp "/root/customize_airootfs.sh" "${ISO_ROOT}/root/customize_airootfs.sh"
+		return 0
+	else
+		cat > "${ISO_ROOT}/root/customize_airootfs.sh" <<'EOF'
+		#!/usr/bin/env bash
+		set -euo pipefail
+
+		# Initialize pacman keyring in the live system
+
+		if ! pacman-key --list-keys >/dev/null 2>&1; then
+			pacman-key --init
+			pacman-key --populate archlinux
+		fi
+		
+		# Add archzfs key if not present
+		
+		if ! pacman-key --list-keys DDF7DB817396A49B2A2723F7403BD972F75D9D76 \
+			>/dev/null 2>&1; then
+		pacman-key --recv-keys DDF7DB817396A49B2A2723F7403BD972F75D9D76 \
+			|| pacman-key --keyserver hkps://keyserver.ubuntu.com \
+			--recv-keys DDF7DB817396A49B2A2723F7403BD972F75D9D76
+		pacman-key --lsign-key DDF7DB817396A49B2A2723F7403BD972F75D9D76
+		fi
+		EOF
+	fi
+
+	local custom-bashrc=/root/custom.bashrc
+	zmodload zsh/system
+	local ERRNO=0
+	if [ ! -f "$custom-bashrc" ]; then
+		err=$ERRNO
+
+		case $errnos[err] in
+			("") echo exists, not a regular file
+				;;
+			(ENOENT|ENOTDIR)
+				if [ -L "$custom-bashrc" ]; then
+					echo broken link
+				else
+					echo does not exist
+				fi
+				;;
+			(*) syserror -p "can't tell: " "$err"
+		esac
+	fi
+
+
+
+
 	if [[ -f "/root/.bashrc" ]]; then
+		cp 
+
 		cp "/root/.bashrc" "${ISO_ROOT}/root/install-bashrc.example"
 		return 0
 	fi
