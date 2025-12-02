@@ -390,6 +390,46 @@ function chowd() {
   echo "Consider running clone_repos function"
 }
 
+
+function clone() {
+  local repo=$1
+  local target_dir=$REPOS
+
+  # Define the build directory for AUR packages
+  local build_dir=~/build_src_dir
+  mkdir -p "$build_dir"
+
+    # Clone AUR packages
+  if [[ $repo == http* ]]; then
+    if [[ $repo == *aur.archlinux.org* ]]; then
+      # Clone the AUR repository
+      git -C "$build_dir" clone "$repo"
+      local repo_name=$(basename "$repo" .git)
+      pushd "$build_dir/$repo_name" > /dev/null
+
+      # Build or install based on the second argument
+      if [[ $target_dir == "build" ]]; then
+        makepkg --syncdeps
+      elif [[ $target_dir == "install" ]]; then
+    makepkg -si
+      fi
+      popd > /dev/null
+    else
+      # Clone non-AUR links
+      git clone "$repo" "$target_dir"
+    fi
+  else
+    # Clone GitHub repos given in the format username/repository
+    # Ensure the target directory for plugins exists
+    # mkdir -p "$target_dir"
+    git -C "$REPOS" clone \
+      "https://github.com/$repo.git" \
+      --recurse-submodules
+  fi
+
+}
+
+
 function clone_repos() {
   if [[ ! -d "$HOME/repos" ]]; then
     sudo mkdir -p "$HOME/repos"
@@ -400,17 +440,40 @@ function clone_repos() {
     yes | sudo pacman -Syy --needed reflector rsync git
     sudo git -C "$REPOS" clone https://github.com/Epineph/UserScripts
     sudo git -C "$REPOS" clone https://github.com/Epineph/nvim_conf
-    sudo git -C "$REPOS" clone https://github.com/Epineph/generate_install_command
-    sudo git -C "$REPOS" clone https://github.com/Epineph/my_zshrc
+    sudo git -C "$REPOS" \
+		  clone https://github.com/Epineph/generate_install_command
     sudo git -C "$REPOS" clone https://github.com/JaKooLit/Arch-Hyprland
     sudo git -C "$REPOS" clone https://github.com/aur-archlinux/yay.git
     sudo git -C "$REPOS" clone https://github.com/aur-archlinux/paru.git
+		sudo git -C "$REPOS" \
+		  clone https://github.com/microsoft/vcpkg --recurse-submodules
   fi
+	if [[ ! -d "$HOME/repos/generate_install_command" ]]; then
+	  clone Epineph/generate_install_command
   chowd "$REPOS"
   if [[ ! -d "$HOME/bin" ]]; then
     sudo mkdir -p "$HOME/bin/bin"
   fi
 }
+
+# Define the function
+## setup root to use vcpkg packages from users $HOME vcpkg repo in addition to installed on system root
+function setup_vcpkg_env() {
+  local vcpkg_root="$HOME/repos/vcpkg"
+  local installed_lib="$vcpkg_root/installed/x64-linux/lib/pkgconfig"
+  local pkg_config_default=$(pkg-config --variable pc_path pkg-config)
+  local combined_path="${pkg_config_default}:${PKG_CONFIG_PATH:+$PKG_CONFIG_PATH:}${installed_lib}"
+
+  # Export environment variables
+  export VCPKG_ROOT="$vcpkg_root"
+  export PATH="$VCPKG_ROOT:$PATH"
+  export CMAKE_PREFIX_PATH="$VCPKG_ROOT/installed"
+  export PKG_CONFIG_PATH="$combined_path"
+  export LD_LIBRARY_PATH="$VCPKG_ROOT/installed/x64-linux/lib:$LD_LIBRARY_PATH"
+}
+
+# Automatically call the function at shell startup
+setup_vcpkg_env
 
 alias mk_mntfiles='sudo mkdir -p /mnt/{etc/pacman.d,etc/ssh,home,efi,boot}; \
 echo "/etc/pacman.d /etc/ssh /home /efi /boot was created on mounted partition"'

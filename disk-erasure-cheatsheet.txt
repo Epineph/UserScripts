@@ -1,258 +1,185 @@
-#!/usr/bin/env bash
-#===============================================================================
-# secure_wipe_cheatsheet.sh
-#
-# Reference snippet: common *correct* ways to wipe data / metadata on Linux.
-#
-# WARNING:
-#   - DO NOT run this file as a script.
-#   - Treat it as a commented "cookbook" of commands.
-#   - Always double-check the target device with: lsblk, blkid, fdisk -l
-#
-# Notation:
-#   - /dev/sdX      → SATA HDD/SSD or USB disk (e.g. /dev/sda)
-#   - /dev/nvme0n1  → NVMe SSD
-#   - /dev/sdX1     → partition (e.g. /dev/sda1)
-#
-# Core idea:
-#   - HDDs       → full overwrite of the *entire device* is sufficient.
-#   - SSD/NVMe   → controller-level secure erase (hdparm/nvme) is the
-#                  *correct* method; dd/shred cannot reliably reach all cells.
-#   - LUKS       → destroy keys (header/keyslot) to achieve cryptographic erase.
-#===============================================================================
-
 #------------------------------------------------------------------------------
-# 0. BASIC SANITY CHECKS (ALWAYS DO THIS FIRST)
+# 5. LUKS: CRYPTOGRAPHIC ERASE vs. FULL HEADER / METADATA WIPE
+#------------------------------------------------------------------------------
+# LUKS partitions have:
+#   - Header + JSON metadata  (LUKS version, UUID, PBKDF params, etc.)
+#   - Keyslots area           (encrypted master key material)
+#   - Encrypted data area     (ciphertext of your actual data)
+#
+# For LUKS2, cryptsetup typically uses:
+#   - metadata + keyslots packed into the first 16 MiB of the device
+#   - a *secondary* metadata copy near the end of the device
+#
+# Security distinctions:
+#   - "cryptographic erase" = destroy all keyslots so ciphertext is useless.
+#   - "full header wipe"    = remove LUKS signature + metadata structures
+#                             so tools no longer even *see* a LUKS header.
 #------------------------------------------------------------------------------
 
-# Show block devices and partitions; verify what you are about to kill:
-#   - Check SIZE and MOUNTPOINTS.
-#   - Ensure target is NOT your system drive (unless you really mean it).
-#
-# This is the *only* safe way to know what /dev/sdX actually is.
+# 5a) CRYPTOGRAPHIC ERASE ONLY (KEYS GONE, HEADER STILL VISIBLE)
+#----------------------------------------------------------------
+# This makes the LUKS volume permanently unreadable, but keeps the
+# header / metadata. Tools like lsblk/blkid will still identify it
+# as LUKS and luksDump will still show a header, just with no slots.
 #
 # Example:
-#   lsblk -o NAME,MODEL,SIZE,TYPE,MOUNTPOINTS
 #
-# Optional: list disks with more detail:
-#   sudo fdisk -l
-#------------------------------------------------------------------------------
-
-#------------------------------------------------------------------------------
-# 1. HDD / USB: FULL-DEVICE OVERWRITE WITH dd (DATA + METADATA)
-#------------------------------------------------------------------------------
-# Use this for:
-#   - Classic spinning HDDs.
-#   - USB sticks (good enough in practice; they also have wear-leveling,
-#     but no standard secure-erase interface; this is the pragmatic choice).
-#
-# Why full *device* (e.g. /dev/sda) and not partition (/dev/sda1)?
-#   - The device contains:
-#       • partition table (MBR/GPT)
-#       • all partitions (data, FS metadata, superblocks)
-#       • unused gaps between partitions
-#   - Overwriting only /dev/sda1 leaves GPT/MBR and other partitions intact.
-#------------------------------------------------------------------------------
-
-# FAST, SUFFICIENT, LOW ENTROPY PATTERN (HDD/USB):
-#   - Zero fill is enough; multi-pass random is unnecessary on modern HDDs.
-#   - bs=4M is a good speed/overhead trade-off.
-#
-# Example (DANGEROUS – uncomment only after verifying /dev/sdX):
-#
-#   sudo dd if=/dev/zero of=/dev/sdX bs=4M status=progress conv=fsync
+#   sudo cryptsetup erase /dev/sdX1
 #
 # Notes:
-#   - if=/dev/zero → faster than /dev/urandom and perfectly fine.
-#   - conv=fsync   → forces data to be written before dd exits.
+#   - This removes *all active keyslots*. No passphrase will ever
+#     work again; the encrypted data is done.
+#   - From the man page: erase does *not* overwrite data area and
+#     does *not* remove the visible metadata structure.
+#   - Good when you only care about confidentiality, not about
+#     hiding the fact that LUKS was used. :contentReference[oaicite:3]{index=3}
+#----------------------------------------------------------------
+
+
+# 5b) ALSO REMOVE LUKS SIGNATURE / METADATA (FRONT + BACK) WITH dd
+#----------------------------------------------------------------
+# Goal:
+#   - After this, luksDump should *fail* and lsblk / blkid should
+#     no longer show crypto_LUKS on that partition.
+#
+# Strategy (for /dev/sdX1):
+#   1) Do cryptographic erase (keys gone).
+#   2) Optionally wipe signatures (wipefs).
+#   3) Overwrite the first N MiB (primary header + keyslots).
+#   4) Overwrite the last N MiB (LUKS2 backup metadata copy).
+#
+# For default LUKS2 layouts N = 16 MiB is sufficient and aligns
+# with the default data offset. :contentReference[oaicite:4]{index=4}
+#
+# DANGEROUS – EXAMPLE ONLY (replace sdX1 with actual partition):
+#
+#   DEV=/dev/sdX1
+#
+#   # 1) Cryptographic erase: kill all keyslots
+#   sudo cryptsetup erase "${DEV}"
+#
+#   # 2) Remove filesystem/LUKS signatures so tools stop
+#   #    recognizing the partition type. This does *not*
+#   #    securely wipe data; it just kills magic bytes.
+#   sudo wipefs -a "${DEV}"
+#
+#   # 3) Overwrite first 16 MiB (primary header + keyslots)
+#   sudo dd if=/dev/zero of="${DEV}" bs=1M count=16 \
+#     status=progress conv=fsync
+#
+#   # 4) Overwrite last 16 MiB (LUKS2 backup metadata area)
+#   SIZE_BYTES=$(blockdev --getsize64 "${DEV}")
+#   BS=$((1024*1024))             # 1 MiB
+#   COUNT=16                      # MiB to wipe at each end
+#   TOTAL_MIB=$(( SIZE_BYTES / BS ))
+#   TAIL_SEEK=$(( TOTAL_MIB - COUNT ))
+#
+#   if (( TAIL_SEEK > 0 )); then
+#     sudo dd if=/dev/zero of="${DEV}" bs="${BS}" count="${COUNT}" \
+#       seek="${TAIL_SEEK}" status=progress conv=fsync
+#   else
+#     echo "[-] Device too small to wipe tail safely – aborting." >&2
+#   fi
+#
+# Notes / caveats:
+#   - This is deliberately conservative: 16 MiB is overkill for LUKS1
+#     and enough for default LUKS2 header+keyslots+metadata.
+#   - On large partitions this is negligible compared to the whole size.
+#   - On SSDs this *does not* solve controller-level remapping issues;
+#     a controller secure erase is still the "proper" solution if you
+#     worry about old NAND pages outside the FTL. :contentReference[oaicite:5]{index=5}
+#------------------------------------------------------------------
+
+
+# 5c) OPTIONAL: AUTO-CALCULATE HEADER SIZE FROM luksDump & WIPE BOTH ENDS
+#------------------------------------------------------------------
+# This is more precise than "blind 16 MiB" and uses the reported
+# data offset of segment 0 as header+keyslot size. It then wipes
+# that much at the front and the same amount at the end.
+#
+# WARNING:
+#   - Example helper. DO NOT run blindly. Always verify $DEV.
+#   - Assumes LUKS2 style output from cryptsetup luksDump.
+#------------------------------------------------------------------
+#
+# function wipe_luks_metadata_both_ends() {
+#   local DEV="$1"
+#   if [[ -z "${DEV}" ]]; then
+#     echo "Usage: wipe_luks_metadata_both_ends /dev/sdX1" >&2
+#     return 1
+#   fi
+#
+#   # Safety: show what we are about to kill.
+#   lsblk -o NAME,TYPE,SIZE,MOUNTPOINTS "${DEV}"
+#   read -r -p "About to WIPE header+metadata on ${DEV}. Continue? [yes/NO] " a
+#   [[ "${a}" == "yes" ]] || { echo "Aborted."; return 1; }
+#
+#   # 1) Cryptographic erase (keys gone).
+#   sudo cryptsetup erase "${DEV}"
+#
+#   # 2) Extract data segment offset from luksDump (bytes).
+#   local OFFSET_BYTES
+#   OFFSET_BYTES=$(sudo cryptsetup luksDump "${DEV}" 2>/dev/null |
+#     awk '/offset:[[:space:]]+[0-9]+[[:space:]]+\[bytes\]/{print $2; exit}')
+#
+#   if [[ -z "${OFFSET_BYTES}" ]]; then
+#     echo "[-] Could not parse data offset from luksDump." >&2
+#     return 1
+#   fi
+#
+#   # Convert to MiB, rounding up:
+#   #   head_mib = ceil(offset_bytes / 2^20)
+#   # In integer arithmetic:
+#   #   head_mib = (offset_bytes + 2^20 - 1) / 2^20
+#   local BS=$((1024*1024))      # 1 MiB
+#   local HEAD_MIB=$(( (OFFSET_BYTES + BS - 1) / BS ))
+#
+#   # 3) Remove signatures (LUKS + FS) for good measure.
+#   sudo wipefs -a "${DEV}"
+#
+#   # 4) Overwrite front HEAD_MIB MiB.
+#   sudo dd if=/dev/zero of="${DEV}" bs="${BS}" count="${HEAD_MIB}" \
+#     status=progress conv=fsync
+#
+#   # 5) Overwrite last HEAD_MIB MiB (LUKS2 backup metadata area).
+#   local SIZE_BYTES TOTAL_MIB TAIL_SEEK
+#   SIZE_BYTES=$(blockdev --getsize64 "${DEV}")
+#   TOTAL_MIB=$(( SIZE_BYTES / BS ))
+#   TAIL_SEEK=$(( TOTAL_MIB - HEAD_MIB ))
+#
+#   if (( TAIL_SEEK > 0 )); then
+#     sudo dd if=/dev/zero of="${DEV}" bs="${BS}" count="${HEAD_MIB}" \
+#       seek="${TAIL_SEEK}" status=progress conv=fsync
+#   else
+#     echo "[-] Device too small for tail wipe; skipping tail." >&2
+#   fi
+# }
+#
+#------------------------------------------------------------------
+# After either 5b or 5c:
+#   - luksDump /dev/sdX1 should fail (no LUKS header detected).
+#   - lsblk/blkid should no longer show crypto_LUKS for that partition.
+#   - The encrypted payload is already unrecoverable once erase killed
+#     the keyslots; header wipe is to remove metadata traces and the
+#     visible "this was LUKS" signature.
 #------------------------------------------------------------------------------
 
-# OPTIONAL: USE shred INSTEAD OF dd (HDD ONLY)
-#   - Adds pseudo-random passes and a final zero pass.
-#   - On modern HDDs, >1 pass adds almost no real benefit, but is sometimes
-#     demanded by policy documents.
-#
-# Example (1 pass; more is mostly a waste of time):
-#
-#   sudo shred --force --verbose --iterations=1 /dev/sdX
-#
-# Why shred is *not* recommended on SSD:
-#   - It still writes via the logical block addresses that the controller
-#     remaps internally; you get write amplification and still cannot be
-#     sure you hit all physical cells.
-#------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
-# 2. CLEARING FILESYSTEM / PARTITION SIGNATURES (METADATA ONLY)
+# 6. “ENCRYPT THEN DISCARD KEY” PATTERN (UNCHANGED, BUT WITH STRONGER ENDING)
 #------------------------------------------------------------------------------
-# Use this when:
-#   - You just want to remove partition table & filesystem signatures
-#     quickly, not securely wipe all data.
-#   - It is fast and useful before re-partitioning or before another
-#     deeper wipe.
-#
-# wipefs only removes known signatures (superblocks, GPT, RAID, etc.).
-# It does NOT wipe all data.
-#------------------------------------------------------------------------------
-
-# Example:
-#
-#   sudo wipefs -a /dev/sdX
-#
-# Explanation:
-#   - -a: remove *all* signatures found (partition table, FS magic, etc.).
-#   - After this, tools will no longer recognize the old filesystems.
+# (Your previous section is conceptually fine; just remember that if you
+# combine it with the header wipes above, you get:
+#   - ciphertext only in data area, no keys;
+#   - no LUKS header, no metadata, no UUID / salt / PBKDF params;
+#   - from outside it looks like random garbage, indistinguishable from
+#     a wiped disk except for whatever your SSD controller chooses to
+#     keep in over-provisioning.)
 #------------------------------------------------------------------------------
 
-#------------------------------------------------------------------------------
-# 3. SATA SSD: ATA SECURE ERASE VIA hdparm (CONTROLLER-LEVEL)
-#------------------------------------------------------------------------------
-# Use this when:
-#   - /dev/sdX is a SATA SSD (not NVMe).
-#   - You want proper SSD-aware sanitization.
-#
-# Idea:
-#   - The SSD controller either:
-#       • cryptographically dumps its internal keys
-#       • or performs a block erase against *all* NAND pages
-#   - This includes over-provisioned and remapped blocks that dd/shred
-#     cannot reach.
-#------------------------------------------------------------------------------
-
-# STEP 1: CHECK DRIVE STATE AND SUPPORT:
-#
-#   sudo hdparm -I /dev/sdX | less
-#
-# Look for:
-#   - "supported: enhanced erase"
-#   - "frozen" flag (drive may be in a frozen state → must unfreeze).
-
-# If drive is "frozen":
-#   - Usually: put machine to sleep and resume; then re-run hdparm -I.
-
-# STEP 2: SET A TEMPORARY SECURITY PASSWORD:
-#
-#   sudo hdparm --user-master u --security-set-pass p /dev/sdX
-#
-# Here:
-#   - user-master u   → user password space
-#   - password "p"    → trivial password just for the erase command
-
-# STEP 3: ISSUE ENHANCED SECURE ERASE:
-#
-#   sudo hdparm --user-master u --security-erase-enhanced p /dev/sdX
-#
-# Differences vs dd/shred:
-#   - This is executed inside the controller, targeting all NAND.
-#   - Much faster and more thorough for SSD.
-#   - After success, data is practically unrecoverable even from
-#     over-provisioned blocks.
-#------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
-# 4. NVMe SSD: CONTROLLER CRYPTO ERASE VIA nvme-cli
-#------------------------------------------------------------------------------
-# Use this when:
-#   - /dev/nvme0n1 (or similar) is an NVMe device.
-#   - You want the NVMe-equivalent of ATA secure erase.
-#
-# Basic steps:
-#   1. Identify the drive.
-#   2. Use nvme format with secure erase setting (SES).
-#------------------------------------------------------------------------------
-
-# STEP 1: LIST NVMe DEVICES:
-#
-#   sudo nvme list
-#
-# Confirm the correct /dev/nvmeXnY path.
-
-# STEP 2: CRYPTO ERASE USING FORMAT:
-#
-#   # DANGEROUS – destroys *all* namespaces/partitions on that NVMe device
-#   sudo nvme format /dev/nvme0n1 --ses=1
-#
-# Explanation:
-#   - ses=1 → secure erase (often crypto-erase: throw away internal key).
-#   - Faster and more thorough than dd/shred on NVMe.
-#------------------------------------------------------------------------------
-
-#------------------------------------------------------------------------------
-# 5. LUKS: CRYPTOGRAPHIC ERASE BY DESTROYING KEYS
-#------------------------------------------------------------------------------
-# Use this when:
-#   - The partition is LUKS-encrypted (e.g. /dev/sdX2).
-#   - You want fast erasure without writing terabytes of data.
-#
-# Idea:
-#   - Data on disk is ciphertext.
-#   - Destroying the keyslot(s) or entire header makes ciphertext useless.
-#
-# Caveat:
-#   - If you destroy the *only* keyslot/header, there is **no way** back.
-#------------------------------------------------------------------------------
-
-# View LUKS header/slots:
-#
-#   sudo cryptsetup luksDump /dev/sdX2
-#
-# Destroy a specific keyslot (e.g. slot 0):
-#
-#   sudo cryptsetup luksKillSlot /dev/sdX2 0
-#
-# To completely erase LUKS header and all keyslots:
-#
-#   sudo cryptsetup erase /dev/sdX2
-#
-# Differences vs dd:
-#   - Much faster; only small header area is modified.
-#   - Data remains on disk but becomes unrecoverable without keys.
-#   - This is mathematically very strong if the cipher and key lengths
-#     are adequate (AES-XTS with 256-bit keys, etc.).
-#------------------------------------------------------------------------------
-
-#------------------------------------------------------------------------------
-# 6. “ENCRYPT THEN DISCARD KEY” PATTERN (MAXIMUM THEORETICAL SECURITY)
-#------------------------------------------------------------------------------
-# Use this when:
-#   - You want information-theoretic style erasure.
-#   - You can afford setting up encryption first.
-#
-# Pattern:
-#   1. Create an encrypted container over /dev/sdX.
-#   2. Fill the container with zeros (so disk holds indistinguishable
-#      ciphertext).
-#   3. Destroy the keys (LUKS header / keyslots).
-#
-# After key destruction, even lab-grade adversaries cannot recover the
-# plaintext (assuming strong cipher + no implementation bugs).
-#------------------------------------------------------------------------------
-
-# Example sketch (LUKS2, very simplified, not a ready-made script):
-
-#   # 1) Set up LUKS on entire device (NOTE: this destroys all content):
-#   sudo cryptsetup luksFormat /dev/sdX
-#
-#   # 2) Open it:
-#   sudo cryptsetup open /dev/sdX cryptwipe
-#
-#   # 3) Fill with zeros (inside the mapper device):
-#   sudo dd if=/dev/zero of=/dev/mapper/cryptwipe bs=4M status=progress
-#
-#   # 4) Close:
-#   sudo cryptsetup close cryptwipe
-#
-#   # 5) Destroy header/keys:
-#   sudo cryptsetup erase /dev/sdX
-#
-# Differences vs simple dd:
-#   - dd writes plain patterns (zeros/random) to raw media.
-#   - Here, the media holds high-entropy ciphertext; once keys are gone,
-#     decryption is impossible in principle (barring cipher break).
-#------------------------------------------------------------------------------
-
-#------------------------------------------------------------------------------
-# 7. QUICK REFERENCE: WHICH METHOD WHEN?
+# 7. QUICK REFERENCE: WHICH METHOD WHEN? (ADD LUKS HEADER WIPE ROW)
 #------------------------------------------------------------------------------
 # HDD (spinning):
 #   → sudo wipefs -a /dev/sdX
@@ -263,7 +190,7 @@
 #   → sudo dd if=/dev/zero of=/dev/sdX bs=4M status=progress conv=fsync
 #
 # SATA SSD:
-#   → sudo hdparm -I /dev/sdX     # check capabilities / frozen state
+#   → sudo hdparm -I /dev/sdX
 #   → sudo hdparm --user-master u --security-set-pass p /dev/sdX
 #   → sudo hdparm --user-master u --security-erase-enhanced p /dev/sdX
 #
@@ -271,15 +198,14 @@
 #   → sudo nvme list
 #   → sudo nvme format /dev/nvme0n1 --ses=1
 #
-# Existing LUKS volume:
-#   → sudo cryptsetup luksDump /dev/sdX2  # inspect slots
-#   → sudo cryptsetup erase /dev/sdX2     # nuke header+keys (irreversible)
+# Existing LUKS volume (keys only):
+#   → sudo cryptsetup luksDump /dev/sdX1
+#   → sudo cryptsetup erase /dev/sdX1
 #
-# “Absolute” approach:
-#   → LUKS-encrypt full device → fill → cryptsetup erase
+# Existing LUKS volume (kill keys + remove header/metadata):
+#   → sudo cryptsetup erase /dev/sdX1
+#   → sudo wipefs -a /dev/sdX1
+#   → sudo dd if=/dev/zero of=/dev/sdX1 bs=1M count=16 \
+#        status=progress conv=fsync
+#   → dd tail wipe as in 5b or function in 5c
 #------------------------------------------------------------------------------
-
-# End of cheatsheet.
-# Remember: everything above is *destructive*. Double-check the target
-# device every time before you press Enter.
-#===============================================================================
