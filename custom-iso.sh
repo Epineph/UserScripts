@@ -859,6 +859,9 @@ function main() {
 
   ensure_dependencies
   prepare_profile "$force"
+
+  rsync -avh --progress --stats /usb/mov /mnt/
+
   append_iso_packages
   install_pacman_conf
   copy_mirrorlist
