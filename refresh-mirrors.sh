@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+set -Eeuo pipefail
+IFS=$'\n\t'
+
 countries=(
 	Denmark
 	Germany
@@ -12,4 +15,22 @@ countries_list=$(
 	echo "${countries[*]}"
 )
 
-sudo reflector --verbose --country "$countries_list" --age 24 --latest 20 --fastest 15 --sort rate --protocol https --connection-timeout 5 --download-timeout 10 --cache-timeout 0 --threads 4 --save "/etc/pacman.d/mirrorlist"
+if ! command -v reflector >/dev/null 2>&1; then
+	echo "Error: reflector is not installed."
+	>&2
+	exit1
+fi
+
+sudo reflector --verbose \
+	--country "$countries_list" \
+	--age 24 \
+	--latest 20 \
+	--fastest 10 \
+	--sort rate \
+	--protocol https \
+	--ipv4 \
+	--connection-timeout 3 \
+	--download-timeout 7 \
+	--cache-timeout 0 \
+	--threads 4 \
+	--save /etc/pacman.d/mirrorlist
