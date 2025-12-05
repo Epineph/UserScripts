@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 
-gen_log sudo pacstrap -P -K /mnt base base-devel power-profiles-daemon vulkan-radeon mesa libdrm radeontool rustup lsof strace rsync reflector linux linux-headers \
+cat > amd_pacstrap1.sh<<'EOF'
+#!/usr/bin/env bash
+gen_log sudo pacstrap -P -K /mnt base base-devel lvm2 power-profiles-daemon vulkan-radeon mesa libdrm radeontool rustup lsof strace rsync reflector linux linux-headers \
   linux-firmware alsa-utils efibootmgr networkmanager cpupower thermald sudo nano neovim mtools \
   dosfstools pacrunner java-runtime java-environment java-rhino amd-ucode xdg-user-dirs xdg-utils \
   python-setuptools python-scipy python-numpy python-pandas python-numba lldb gdb cmake ninja zip \
   unzip lzop lz4 exfatprogs ntfs-3g xorg-xauth git github-cli devtools reflector rsync wget curl \
-  coreutils iptables inetutils openssh lvm2 texlive-mathscience texlive-latexextra torchvision qt5 \
+  coreutils iptables inetutils openssh lvm2 qt5 \
   qt6 qt5-base qt6-base vulkan-radeon vulkan-headers vulkan-extra-layers volk vkmark vkd3d spirv-tools \
   vulkan-mesa-layers vulkan-tools vulkan-utility-libraries mesa mesa-vdpau mesa-demos archiso \
   arch-install-scripts archinstall uutils-coreutils progress grub glib2-devel glibc-locales gcc-fortran \
@@ -26,11 +28,15 @@ gen_log sudo pacstrap -P -K /mnt base base-devel power-profiles-daemon vulkan-ra
   libxcrypt xca tpm2-tss-engine tpm2-openssl ruby python-service-identity python-pyopenssl python-ndg-httpsclient \
   pkcs11-provider perl-net-ssleay perl-crypt-ssleay perl-crypt-openssl-rsa extra-cmake-modules corrosion \
   python-capng git-bug git-cinnabar git-cliff git-crypt git-delta git-evtag git-filter-repo git-grab git-lfs \
-  gitea gitg hipify-clang python-tensorflow-opt tensorflow-opt texlive-luatex icu egl-gbm egl-wayland egl-x11 openipmi openpgl openvkl python-intelhex throttled tipp10 vpl-gpu-rt singular polymake planarity pari normaliz \
+  gitea gitg icu egl-gbm egl-wayland egl-x11 openipmi openpgl openvkl python-intelhex throttled tipp10 vpl-gpu-rt singular polymake planarity pari normaliz \
   nauty mpfi libxaw libmpc libsemigroups libmpc fplll cddlib c-xsc bliss github-cli sof-firmware goreleaser \
   python-watchgod black-hole-solver lsd opam ocaml-bigarray-compat ocaml ocaml-pp ocaml-re ocaml-fmt ocaml-bos \
-  ocaml-gen ocaml-num ocaml-seq ocaml-csexp ocaml-pcre2 ocaml-base ocamlbuild swi-prolog darcs powerline-fonts \
-  nerd-fonts awesome-terminal-fonts vim-powerline python-netifaces python-trio python-outcome \
+  ocaml-gen ocaml-num ocaml-seq ocaml-csexp ocaml-pcre2 ocaml-base ocamlbuild swi-prolog darcs powerline-fonts
+EOF
+
+cat > amd_pacstrap2.sh<<'EOF'
+#!/usr/bin/env bash
+gen_log sudo pacstrap -i /mnt  nerd-fonts awesome-terminal-fonts vim-powerline python-netifaces python-trio python-outcome \
   python-uvloop python-pytest pari-elldata pari-galpol pkgfile bash bash-completion bat biber blas-openblas \
   bluez boost-libs btrfs-progs bzip2 ca-certificates cairo ccid clang cppzmq curl dav1d dav1d-doc db db5.3 \
   dconf debuginfod dhcpcd diffutils dnsmasq dosfstools e2fsprogs ed edk2-ovmf efibootmgr erofsfuse evince exo \
@@ -73,7 +79,12 @@ gen_log sudo pacstrap -P -K /mnt base base-devel power-profiles-daemon vulkan-ra
   nss nss-mdns nuspell onetbb opencl-driver opengl-man-pages openjpeg2 openmp openmpi openresolv openssh openssl \
   org.freedesktop.secrets os-prober ostra-cg pacrunner pam pango parallel-docs pcmanfm pcsclite perl \
   perl-archive-zip perl-authen-sasl perl-cgi perl-file-homedir perl-file-mimeinfo perl-io-socket-ssl perl-libwww \
-  perl-locale-gettext perl-lwp-protocol-https perl-net-dbus perl-term-readkey perl-tk perl-x11-protocol \
+  perl-locale-gettext perl-lwp-protocol-https perl-net-dbus perl-term-readkey perl-tk perl-x11-protocol
+EOF
+
+cat > amd_pacstrap3.sh<<'EOF'
+#!/usr/bin/env bash
+gen_log sudo pacstrap -i /mnt \
   python-babel python-beautifulsoup4 python-blosc python-bottleneck python-brotli python-brotlicffi python-cairo \
   python-cffi python-chardet python-colorama python-dbus python-dotenv python-email-validator python-fastimport \
   python-fsspec python-gobject python-gpgme python-h2 python-html5lib python-hypothesis python-idna \
@@ -90,7 +101,7 @@ gen_log sudo pacstrap -P -K /mnt base base-devel power-profiles-daemon vulkan-ra
   systemd-sysvcompat tcl tk tpm2-abrmd tpm2-tss tree-sitter unixodbc util-linux valkey vulkan-driver vulkan-mesa-layers \
   wayland which wireless-regdb wl-clipboard words x11-ssh-askpass xcb-util-wm xclip xorg-xauth xsel xz zlib comgr \
   avahi gitg glib2-devel glibc glu gnupg gnutls grep grub grub gst-libav gst-plugins-bad gst-plugins-good \
-  gst-plugins-ugly gtest gtk3 guile gvfs hspell hunspell iio-sensor-proxy imagemagick intel-media-sdk iptables \
+  gst-plugins-ugly gtest gtk3 guile gvfs hspell hunspell iio-sensor-proxy imagemagick iptables \
   iptables iwd java-environment kguiaddons kwallet5 kwayland5 kwindowsystem ladspa less libarchive libasyncns \
   libbpf libdecor libevent libfbclient libffado libfido2 libisoburn libldap libmysofa libopenraw libp11-kit libpng \
   libpwquality libsecret libusb libwmf libxau libxaw libxml2 litehtml lldb llvm lua lz4 lzop man mariadb-libs memcached \
@@ -114,6 +125,22 @@ gen_log sudo pacstrap -P -K /mnt base base-devel power-profiles-daemon vulkan-ra
   qt5-wayland qt5-x11extras qt6-5compat qt6-base qt6-declarative qt6-quick3d qt6-serialport quota-tools \
   r rav1e rdma-core realtime-privileges rtkit ruby ruby-bundled-gems ruby-default-gems ruby-docs ruby-stdlib \
   scx-scheds sdl sh smtp-forwarder sndio speech-dispatcher spirv-tools sqlite subversion sudo svt-av1 \
-  systemd-sysvcompat systemd-ukify tcl texlive-binextra texlive-fontsrecommended texlive-latexrecommended tk \
+  systemd-sysvcompat tcl tk \
   tpm2-tss unixodbc util-linux valkey vulkan-driver wayland wireless-regdb wl-clipboard wpa_supplicant \
   x11-ssh-askpass x264 xclip xorg-xauth xsel xterm xz zlib --sudoloop --batchinstall --asdeps
+EOF
+
+cat > amd_tex_pacstrap.sh<<'EOF'
+#!/usr/bin/env bash
+gen_log sudo pacstrap -i /mnt texlive-mathscience texlive-latexextra texlive-luatex \
+texlive-binextra texlive-fontsrecommended texlive-latexrecommended
+EOF
+
+sudo chmod 777 amd_tex_pacstrap.sh
+sudo chmod 777 amd_pacstrap1.sh
+sudo chmod 777 amd_pacstrap2.sh
+sudo chmod 777 amd_pacstrap3.sh
+
+echo "amd_pacstrap1.sh, amd_pacstrap2.sh, amd_pacstrap3.sh and"
+echo -e "amd_tex_pacstrap.sh generated at $(pwd) with read, write\n
+ and execute permissions"
