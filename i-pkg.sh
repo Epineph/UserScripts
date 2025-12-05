@@ -144,6 +144,7 @@ gen_log yay -S --needed adwaita-cursors alsa-lib apparmor appstream aspell \
 	python-chardet python-colorama python-dbus python-dotenv \
 	python-email-validator python-fastimport python-fsspec python-gobject \
 	python-gpgme python-h2 python-html5lib python-hypothesis python-idna \
+                                                                             \
 	python-inflect python-jinja python-keyring python-libevdev \
 	python-linkify-it-py python-lxml python-matplotlib python-mdit_py_plugins \
 	python-merge3 python-numexpr python-numpy python-openpyxl \
