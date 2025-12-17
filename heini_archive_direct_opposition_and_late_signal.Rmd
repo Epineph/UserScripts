@@ -303,3 +303,91 @@ digraph G {
   E  -> T;
 }
 ")
+```
+
+## B. R diagram: simulated late-onset learning curve (ggplot2)
+
+```{r curve_r, message=FALSE, warning=FALSE}
+# install.packages(c("dplyr","tidyr","ggplot2"))  # if needed
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+set.seed(20251216)
+
+n_sessions <- 25
+n <- 4
+
+groups <- expand_grid(
+  task   = c("simple","two_turn"),
+  lesion = c("sham","ff"),
+  cues   = c("cues","nocues")
+) %>%
+  mutate(group = interaction(task, lesion, cues, sep="_"))
+
+dat <- expand_grid(group = groups$group, session = 1:n_sessions) %>%
+  separate(group, into=c("task","lesion","cues"), sep="_", remove=FALSE) %>%
+  mutate(
+    tau = 6 +
+      ifelse(task=="two_turn", 3, 0) +
+      ifelse(lesion=="ff", 8, 0) +
+      ifelse(cues=="nocues", 4, 0),
+    base = -1.2 +
+      ifelse(task=="two_turn", -0.3, 0) +
+      ifelse(cues=="nocues", -0.2, 0),
+    bpre  = 0.0,
+    bpost = 0.5 +
+      ifelse(task=="two_turn", -0.1, 0) +
+      ifelse(lesion=="ff", -0.12, 0) +
+      ifelse(cues=="nocues", -0.1, 0),
+    pos   = pmax(0, session - tau),
+    eta   = base + bpre * session + bpost * pos,
+    p     = plogis(eta),
+    mean_correct = n * p
+  )
+
+ggplot(dat, aes(session, mean_correct, group = group)) +
+  geom_line() +
+  facet_grid(task ~ cues + lesion) +
+  labs(
+    x = "Session",
+    y = "Expected # correct (out of 4)",
+    title = "Illustrative late-onset learning curves (group-level expectation)"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+## C. Alternative Python diagram (standalone script)
+
+```python
+import matplotlib.pyplot as plt
+import networkx as nx
+
+G = nx.DiGraph()
+nodes = ["MH","MS","KP","KR","E","T"]
+G.add_nodes_from(nodes)
+
+edges = [("MH","KP"),("MS","KR"),("KP","T"),("KR","T"),("MH","E"),("MS","E"),("E","T")]
+G.add_edges_from(edges)
+
+pos = {
+  "MH": (0, 1), "MS": (0, 0),
+  "KP": (1, 1), "KR": (1, 0),
+  "E":  (2, 0.5),
+  "T":  (3, 0.5)
+}
+
+plt.figure(figsize=(7, 3))
+nx.draw(G, pos, with_labels=True, arrows=True)
+plt.tight_layout()
+plt.savefig("dag_python.png", dpi=200)
+```
+
+---
+
+# Notes for later reuse
+
+- The core warning is **identification**: if the mapping from latent cognition to
+  behaviour is many-to-one, forced-choice probes cannot uniquely infer strategy.
+- For late signals, prefer **onset/time-to-criterion** modelling over post-hoc
+  late-window cherry-picking.

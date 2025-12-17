@@ -1,0 +1,121 @@
+---
+title: "Nuclear Medicine Report - English Translation"
+author: " "
+date: "2025-11-28"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+# Nuclear Medicine Report (English Translation)
+
+## Institution and System
+
+- **Institution:** Ege University Faculty of Medicine  
+- **System:** Nuclear Medicine Reporting System  
+- **Report Type:** Nuclear Medicine Report  
+
+## Patient and Administrative Information
+
+- **Name Surname:** REYHAN AKARKUT  
+- **Protocol No:** 1997071485  
+- **Sex:** F  
+- **Date of Birth:** 01.01.1956  
+
+- **Report Date:** 28.11.2025 – 11:20:00  
+
+- **Requesting Physician:** Assoc. Prof. Dr. BURCU ÇAKAR  
+- **Requesting Department:** Oncology Outpatient Clinic (Medical Oncology (Internal Medicine))  
+
+- **Diagnosis:** C16.9 Malignant neoplasm of stomach, unspecified  
+
+- **Order Note:** *(not specified)*  
+
+---
+
+## Report
+
+### Oncologic PET (F-18 FDG)
+
+Ege University Faculty of Medicine  
+Department of Nuclear Medicine  
+
+**Positron Emission Tomography**
+
+- **Date of Examination:** 27.11.2025  
+- **Imaging Technique:**  
+- **ICD Diagnosis Code:** C16  
+- **Indication:** Evaluation of response to treatment  
+- **Referring Clinic:** Department of Internal Medicine  
+
+- **Fasting blood glucose:** 91 mg/dL  
+- **FDG dose:** 5.3 mCi  
+
+- **Scan range:** Vertex–thigh  
+- **Height:** 158 cm  
+- **Weight:** 48 kg  
+
+- **Additional imaging:** (-)  
+- **Premedication:** (-)  
+
+- **Device:** General Electric Discovery IQ Gen 2  
+
+**Comparison information:**  
+The examination has been evaluated together with the PET/CT in our archive dated 22.7.2025.  
+
+---
+
+## Findings
+
+In the cerebral and cerebellar regions, the distribution of FDG is within physiological limits for the examination.  
+
+On evaluation of the head and neck structures, there is no lymph node of pathological size or with increased FDG uptake.  
+
+In the thoracic sections, when the pulmonary parenchymal areas are examined, in the apicoposterior segment of the left upper lobe there is a nodular density measuring 0.4 × 0.2 cm that does not demonstrate increased FDG uptake and has developed on follow-up; continued monitoring is recommended.  
+
+In the anterior segment of the right upper lobe there is a 3 mm non-metabolic calcified nodule that is stable on follow-up.  
+
+No hypermetabolic nodule or area of infiltration is observed in either lung.  
+
+In the right hemithorax, pleural effusion reaching 1.3 cm and, in the left hemithorax, pleural effusion with a layering pattern, both showing mild FDG uptake, have developed on follow-up (SUVmax: 1.3).  
+
+In the mediastinum, there is no lymph node of pathological size or with increased FDG uptake.  
+
+FDG distribution in the parenchyma of both breasts and in the axillary fossae is normal.  
+
+In the abdominopelvic images, in this patient with a history of subtotal gastrectomy, no manifest hypermetabolic focus suggestive of recurrence is identified in the operative bed.  
+
+In the current study, free fluid has developed in the subhepatic, paracolic, interloop and pelvic regions.  
+
+In addition, the mesenteric areas have an edematous appearance and appear hazy/“dirty”.  
+
+Increased FDG uptake is observed in the intestinal loops (SUVmax: 5–9.2).  
+
+Numerous calcified foci are observed in the uterus.  
+
+The liver, spleen, adrenal glands and structures of the urinary system show FDG uptake within physiological limits.  
+
+No hypermetabolic lymph node is identified.  
+
+FDG uptake in the muscular and skeletal structures included in the imaging field is within normal limits.  
+
+An edematous appearance has developed in the subcutaneous areas.  
+
+---
+
+## Conclusion – Recommendations
+
+In the images obtained for evaluation of treatment response in this patient diagnosed with gastric carcinoma and assessed together with the PET/CT dated 22.7.2025:  
+
+- In this patient with a history of subtotal gastrectomy, no manifest hypermetabolic focus suggestive of recurrence is identified in the operative bed.  
+- In the apicoposterior segment of the left upper lobe, a nodular density without increased FDG uptake has developed on follow-up; continued monitoring is recommended.  
+- Pleural effusion has developed on follow-up in both hemithoraces.  
+- In addition, it is recommended that the free fluid that has developed in the abdomen and the dirty appearance of the mesenteric areas observed in the current examination be evaluated in terms of peritoneal involvement.  
+
+---
+
+## Signatures
+
+- **NM Sec.:** Mine Temel  
+- **Reporting Physician:** Prof. Dr. Ayşegül Akgün  
