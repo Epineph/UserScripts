@@ -1,4 +1,0 @@
-mkdir -p ~/logs/pacman
-out=~/logs/pacman/pacman-output-$(date +%F_%H%M%S).txt
-wl-paste > "$out"
-pacman-output-audit --in "$out"
