@@ -101,6 +101,37 @@ function Show-Acl {
   }
 }
 
+
+
+
+
+function Invoke-Exe {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Exe,
+
+    [Parameter(Mandatory = $true)]
+    [string[]]$Args,
+
+    [Parameter(Mandatory = $true)]
+    [string]$FailMessage
+  )
+
+  # Pretty-print for logging (quote args that contain whitespace)
+  $disp = ($Args | ForEach-Object {
+    if ($_ -match '\s') { '"{0}"' -f $_ } else { $_ }
+  }) -join ' '
+
+  Write-Info "$Exe $disp"
+
+  & $Exe @Args
+  $code = $LASTEXITCODE
+
+  if ($code -ne 0) {
+    Fail "$FailMessage (exit code $code)."
+  }
+}
+
 function Invoke-TakeOwn {
   param(
     [string]$Target,
@@ -114,11 +145,8 @@ function Invoke-TakeOwn {
     $args += 'Y'
   }
 
-  Write-Info "takeown.exe $($args -join ' ')"
-  $p = Start-Process -FilePath 'takeown.exe' -ArgumentList $args -NoNewWindow -Wait -PassThru
-  if ($p.ExitCode -ne 0) {
-    Fail "takeown.exe failed with exit code $($p.ExitCode) for '$Target'."
-  }
+  Invoke-Exe -Exe 'takeown.exe' -Args $args `
+    -FailMessage "takeown.exe failed for '$Target'"
 }
 
 function Invoke-IcAclsSetOwnerAdministrators {
@@ -130,11 +158,8 @@ function Invoke-IcAclsSetOwnerAdministrators {
   $args = @($Target, '/setowner', 'BUILTIN\Administrators', '/C')
   if ($R -and $IsDirectory) { $args += '/T' }
 
-  Write-Info "icacls.exe $($args -join ' ')"
-  $p = Start-Process -FilePath 'icacls.exe' -ArgumentList $args -NoNewWindow -Wait -PassThru
-  if ($p.ExitCode -ne 0) {
-    Fail "icacls.exe /setowner failed with exit code $($p.ExitCode) for '$Target'."
-  }
+  Invoke-Exe -Exe 'icacls.exe' -Args $args `
+    -FailMessage "icacls.exe /setowner failed for '$Target'"
 }
 
 function Invoke-IcAclsGrantFullControl {
@@ -146,7 +171,7 @@ function Invoke-IcAclsGrantFullControl {
   $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 
   $grants = @(
-    "$currentUser:(OI)(CI)F"
+    "$($currentUser):(OI)(CI)F"
     'BUILTIN\Administrators:(OI)(CI)F'
     'NT AUTHORITY\SYSTEM:(OI)(CI)F'
   )
@@ -158,12 +183,10 @@ function Invoke-IcAclsGrantFullControl {
   }
   if ($R -and $IsDirectory) { $args += '/T' }
 
-  Write-Info "icacls.exe $($args -join ' ')"
-  $p = Start-Process -FilePath 'icacls.exe' -ArgumentList $args -NoNewWindow -Wait -PassThru
-  if ($p.ExitCode -ne 0) {
-    Fail "icacls.exe /grant failed with exit code $($p.ExitCode) for '$Target'."
-  }
+  Invoke-Exe -Exe 'icacls.exe' -Args $args `
+    -FailMessage "icacls.exe /grant failed for '$Target'"
 }
+
 
 # ---------------------------------------------------------------------------
 # Main
