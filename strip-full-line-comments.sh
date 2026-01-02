@@ -7,20 +7,19 @@
 #   (1) a "cleaned" copy (comment-only lines removed)
 #   (2) a companion file containing only the removed comment-only lines
 #
-# Default output layout (single file):
-#   /shared/modified_zshrc/<group>/<run_id>/<basename>
-#   /shared/modified_zshrc/<group>/<run_id>/<basename><suffix>
+# A "comment-only line" is a line whose first non-whitespace character is '#':
+#   ^[[:space:]]*#
 #
-# Example:
-#   strip-full-line-comments.sh ~/.zshrc
-#   => /shared/modified_zshrc/zshrc/20260102-214501/.zshrc
-#      /shared/modified_zshrc/zshrc/20260102-214501/.zshrc-commented
+# NOTE:
+#   - Inline comments are NOT removed:  echo hi  # stays
+#   - With --keep-shebang, lines starting "#!" are kept in cleaned output.
+#
 # -----------------------------------------------------------------------------
 
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# Globals (defaults)
+# Defaults
 # -----------------------------------------------------------------------------
 
 OUT_ROOT="/shared/modified_zshrc"
@@ -33,7 +32,7 @@ GROUP_OVERRIDE=""
 PATTERNS=("*")
 
 # -----------------------------------------------------------------------------
-# Small helpers
+# Helpers
 # -----------------------------------------------------------------------------
 
 function die() {
@@ -64,8 +63,8 @@ function expand_tilde() {
 
 function sanitize_group() {
   local s="${1:-}"
-  s="${s#.}"           # strip one leading dot (e.g., .zshrc -> zshrc)
-  s="${s%.*}"          # strip last extension (e.g., zsh_misc.zsh -> zsh_misc)
+  s="${s#.}"           # .zshrc -> zshrc
+  s="${s%.*}"          # zsh_misc.zsh -> zsh_misc
   s="${s//[^A-Za-z0-9_-]/_}"
   [[ -n "$s" ]] || s="group"
   printf '%s\n' "$s"
@@ -89,70 +88,165 @@ function show_help() {
   cat <<'EOF' | /usr/bin/env bash -c "$pager"
 strip-full-line-comments.sh
 
-USAGE:
+NAME
+  strip-full-line-comments.sh — Split full-line comment rows out of file(s)
+
+SYNOPSIS
   strip-full-line-comments.sh [OPTIONS] <PATH>
 
-PATH:
-  A file or a directory.
-  - If PATH is a file, processes that single file.
-  - If PATH is a directory, processes matching files under it (see --pattern).
+DESCRIPTION
+  This script removes (only) full-line comments from a file, or from a directory
+  tree of files, and writes results into a structured output directory. The
+  original file(s) are never modified.
 
-WHAT COUNTS AS A "COMMENTED ROW":
-  A full line whose first non-whitespace character is '#', i.e.:
-    ^[[:space:]]*#
+  The script produces two outputs per processed file:
+    1) CLEANED FILE
+       The original content with full-line comment rows removed.
 
-  By default, such lines are REMOVED from the cleaned output and written to the
-  companion "<suffix>" file. Non-comment lines are kept unchanged.
+    2) COMMENTS-ONLY FILE
+       A file containing exactly the removed full-line comment rows, in order.
 
-OUTPUT (default):
-  OUT_ROOT=/shared/modified_zshrc
-  For a file:
-    OUT_ROOT/<group>/<run_id>/<basename>
-    OUT_ROOT/<group>/<run_id>/<basename><suffix>
+  What counts as a "full-line comment row"?
+    Any line whose first non-whitespace character is '#':
+      ^[[:space:]]*#
 
-  For a directory:
-    OUT_ROOT/<group>/<run_id>/<relative/path/to/file>
-    OUT_ROOT/<group>/<run_id>/<relative/path/to/file><suffix>
+  Important behavior:
+    - Inline comments are NOT removed:
+        echo hi  # this stays in the cleaned file
+    - Blank lines are NOT removed.
+    - A shebang line (#!...) matches the comment rule; use --keep-shebang to
+      preserve it in cleaned output.
 
-OPTIONS:
+PATH MODES
+  If PATH is a file:
+    Process that single file.
+
+  If PATH is a directory:
+    Recursively find files and process matching ones (see --pattern). Output
+    preserves the relative directory structure under PATH.
+
+OUTPUT LAYOUT
+  Output is grouped by a "group name" and a per-run timestamp:
+
+    OUT_ROOT/<group>/<run_id>/<...>
+
+  Where:
+    OUT_ROOT  default: /shared/modified_zshrc
+    group     derived from basename of PATH (sanitized), or overridden by --group
+    run_id    date stamp: YYYYMMDD-HHMMSS
+
+  Single file example:
+    Input:
+      ~/.zshrc
+
+    Output:
+      /shared/modified_zshrc/zshrc/20260102-214501/.zshrc
+      /shared/modified_zshrc/zshrc/20260102-214501/.zshrc-commented
+
+  Directory example:
+    Input:
+      ~/.zsh_profile
+
+    Output (example file):
+      /shared/modified_zshrc/zsh_profile/20260102-214501/zsh_misc.zsh
+      /shared/modified_zshrc/zsh_profile/20260102-214501/zsh_misc.zsh-commented
+
+  Companion files:
+    The "comments-only" file path is the cleaned output file path plus the
+    configured suffix (default: -commented).
+
+MANIFEST AND SUMMARY
+  Each run writes two metadata files (unless --dry-run):
+    __manifest.tsv
+      Tab-separated rows:
+        source_path    cleaned_path    comments_path    kept_lines    removed_lines
+
+    __summary.txt
+      A simple key/value summary of the run configuration.
+
+OPTIONS
   -o, --out-root DIR
-      Output root directory (default: /shared/modified_zshrc)
+      Root output directory.
+      Default: /shared/modified_zshrc
 
   --comment-suffix SUFFIX
-      Suffix appended to the cleaned file path for the "comments-only" file
-      (default: -commented)
-      Example: ".zshrc" -> ".zshrc-commented"
+      Suffix appended to the cleaned-file path to form the comments-only path.
+      Default: -commented
 
   --group NAME
-      Override the <group> directory name.
+      Override the group directory name.
+      Useful when you want a stable group regardless of PATH basename.
 
   --keep-shebang
-      Keep lines beginning with "#!" in the cleaned output even though they
-      match the full-line comment rule.
+      Preserve a leading shebang (#!...) in cleaned output.
+      Without this, shebang lines are treated as comment-only and moved to the
+      comments-only file.
 
   --pattern GLOB
-      When PATH is a directory, only process files whose basename matches GLOB.
-      Can be provided multiple times. Default: '*' (all files).
+      When PATH is a directory, only process files whose *basename* matches the
+      glob. May be provided multiple times.
+
+      Examples:
+        --pattern '*.zsh'
+        --pattern '.zshrc'
+        --pattern '*.sh' --pattern '*.zsh'
+
+      Default: '*' (process all files)
 
   --all
       Equivalent to: --pattern '*'
 
   --follow-symlinks
-      Follow symlinks when PATH is a directory (uses find -L).
+      When PATH is a directory, follow symlinks during traversal (find -L).
 
   -n, --dry-run
-      Print what would be done, but do not write files.
+      Print what would be done; do not write output files.
 
   -q, --quiet
-      Reduce output.
+      Reduce output (still writes files and manifests).
 
   -h, --help
       Show this help.
 
-EXIT CODES:
-  0 success
-  2 usage error
-  1 other error
+ENVIRONMENT
+  HELP_PAGER
+    Pager command used to display --help output.
+    Default: "less -R" if available, else "cat".
+
+EXIT STATUS
+  0  Success
+  2  Usage error (bad args)
+  1  Other error (missing command, IO error, etc.)
+
+EXAMPLES
+  1) Process a single file, default output root:
+     strip-full-line-comments.sh ~/.zshrc
+
+  2) Keep shebang in cleaned file:
+     strip-full-line-comments.sh --keep-shebang ~/.zshrc
+
+  3) Use a custom output root and suffix:
+     strip-full-line-comments.sh \
+       --out-root /shared/modified_zsh \
+       --comment-suffix '.comments' \
+       ~/.zshrc
+
+  4) Process a directory, only *.zsh files:
+     strip-full-line-comments.sh --pattern '*.zsh' ~/.zsh_profile
+
+  5) Process multiple patterns:
+     strip-full-line-comments.sh \
+       --pattern '.zshrc' \
+       --pattern '*.zsh' \
+       ~/.config/zsh
+
+NOTES / LIMITATIONS (BY DESIGN)
+  - This script does not parse shell syntax; it matches lines by a simple regex.
+  - It does not remove inline comments.
+  - It does not attempt to preserve or normalize line endings; it writes output
+    as text via awk (normally LF). If you have CRLF inputs and need to preserve
+    CRLF, add a conversion pass or run in a Windows-aware pipeline.
+
 EOF
 }
 
@@ -240,7 +334,7 @@ function parse_args() {
 }
 
 # -----------------------------------------------------------------------------
-# Core logic
+# Core processing
 # -----------------------------------------------------------------------------
 
 function awk_split_comments() {
@@ -256,10 +350,7 @@ function awk_split_comments() {
       -v out_comment="$out_comment" \
       -v keep_shebang="$keep_shebang" \
       '
-      BEGIN {
-        kept = 0
-        dropped = 0
-      }
+      BEGIN { kept = 0; dropped = 0 }
       {
         line = $0
         if (keep_shebang == 1 && line ~ /^#!/) {
@@ -275,9 +366,7 @@ function awk_split_comments() {
           kept++
         }
       }
-      END {
-        printf "%d\t%d\n", kept, dropped
-      }
+      END { printf "%d\t%d\n", kept, dropped }
       ' "$in_file"
 }
 
@@ -289,7 +378,6 @@ function process_one_file() {
 
   local out_clean="${out_base}/${rel_path}"
   local out_comment="${out_clean}${COMMENT_SUFFIX}"
-
   local out_dir=""
   out_dir="$(dirname -- "$out_clean")"
 
@@ -310,7 +398,6 @@ function process_one_file() {
 
   counts="$(awk_split_comments "$src_abs" "$out_clean" "$out_comment" \
     "$KEEP_SHEBANG")"
-
   kept="${counts%%$'\t'*}"
   dropped="${counts##*$'\t'}"
 
@@ -326,33 +413,6 @@ function process_one_file() {
   fi
 }
 
-function build_find_command() {
-  local root="$1"
-  shift || true
-
-  local -a cmd=(find)
-  if [[ $FOLLOW_SYMLINKS -eq 1 ]]; then
-    cmd+=(-L)
-  fi
-  cmd+=("$root" -type f)
-
-  if [[ ${#PATTERNS[@]} -gt 0 && "${PATTERNS[0]}" != "*" ]]; then
-    cmd+=( \( )
-    local i=0
-    for i in "${!PATTERNS[@]}"; do
-      if [[ $i -gt 0 ]]; then
-        cmd+=(-o)
-      fi
-      cmd+=(-name "${PATTERNS[$i]}")
-    done
-    cmd+=( \) )
-  fi
-
-  cmd+=(-print0)
-
-  printf '%s\0' "${cmd[@]}"
-}
-
 function main() {
   require_cmd awk date find mkdir stat chmod realpath
 
@@ -362,7 +422,6 @@ function main() {
 
   local target_abs=""
   target_abs="$(realpath -m -- "$target")"
-
   [[ -e "$target_abs" ]] || die "Path does not exist: $target_abs"
 
   local run_id=""
@@ -372,11 +431,7 @@ function main() {
   if [[ -n "$GROUP_OVERRIDE" ]]; then
     group="$(sanitize_group "$GROUP_OVERRIDE")"
   else
-    if [[ -d "$target_abs" ]]; then
-      group="$(sanitize_group "$(basename -- "$target_abs")")"
-    else
-      group="$(sanitize_group "$(basename -- "$target_abs")")"
-    fi
+    group="$(sanitize_group "$(basename -- "$target_abs")")"
   fi
 
   local out_base="${OUT_ROOT}/${group}/${run_id}"
