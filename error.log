@@ -1,0 +1,112 @@
+lhapdf install $(lhapdf list --outdated)
+
+(1969/2032) upgrading speech-dispatcher                                                 [---------------------------------------------------] 100%
+(1970/2032) upgrading sqlfluff                                                          [---------------------------------------------------] 100%
+(1971/2032) upgrading sqlite-analyzer                                                   [---------------------------------------------------] 100%
+(1972/2032) upgrading sqlite-tcl                                                        [---------------------------------------------------] 100%
+(1973/2032) upgrading sqlmap                                                            [---------------------------------------------------] 100%
+(1974/2032) upgrading streamlink                                                        [---------------------------------------------------] 100%
+(1975/2032) upgrading subversion                                                        [---------------------------------------------------] 100%
+(1976/2032) upgrading sudo                                                              [---------------------------------------------------] 100%
+(1977/2032) upgrading sugar-datastore                                                   [---------------------------------------------------] 100%
+(1978/2032) upgrading sugar-toolkit-gtk3                                                [---------------------------------------------------] 100%
+(1979/2032) upgrading sugar                                                             [---------------------------------------------------] 100%
+(1980/2032) upgrading supervisor                                                        [---------------------------------------------------] 100%
+(1981/2032) upgrading syslog-ng                                                         [---------------------------------------------------] 100%
+(1982/2032) upgrading syslog-ng-sql                                                     [---------------------------------------------------] 100%
+(1983/2032) upgrading systemd-language-server                                           [---------------------------------------------------] 100%
+(1984/2032) upgrading systemtap                                                         [---------------------------------------------------] 100%
+(1985/2032) upgrading tailscale                                                         [---------------------------------------------------] 100%
+(1986/2032) upgrading tartube                                                           [---------------------------------------------------] 100%
+(1987/2032) upgrading telegram-desktop                                                  [---------------------------------------------------] 100%
+(1988/2032) upgrading terminator                                                        [---------------------------------------------------] 100%
+(1989/2032) upgrading texworks                                                          [---------------------------------------------------] 100%
+(1990/2032) upgrading threadweaver                                                      [---------------------------------------------------] 100%
+(1991/2032) upgrading throttled                                                         [---------------------------------------------------] 100%
+(1992/2032) upgrading tombi                                                             [---------------------------------------------------] 100%
+(1993/2032) upgrading torbrowser-launcher                                               [---------------------------------------------------] 100%
+(1994/2032) upgrading translate-toolkit                                                 [---------------------------------------------------] 100%
+(1995/2032) upgrading transmageddon                                                     [---------------------------------------------------] 100%
+(1996/2032) upgrading trash-cli                                                         [---------------------------------------------------] 100%
+(1997/2032) upgrading tree-sitter-cli                                                   [---------------------------------------------------] 100%
+(1998/2032) upgrading ttf-gentium-plus                                                  [---------------------------------------------------] 100%
+(1999/2032) upgrading txt2tags                                                          [---------------------------------------------------] 100%
+(2000/2032) upgrading typobuster                                                        [---------------------------------------------------] 100%
+(2001/2032) upgrading ufw                                                               [---------------------------------------------------] 100%
+(2002/2032) upgrading urh                                                               [---------------------------------------------------] 100%
+(2003/2032) upgrading usort                                                             [---------------------------------------------------] 100%
+(2004/2032) upgrading uusi                                                              [---------------------------------------------------] 100%
+(2005/2032) upgrading uv                                                                [---------------------------------------------------] 100%
+(2006/2032) upgrading uwsgi                                                             [---------------------------------------------------] 100%
+(2007/2032) upgrading uwsgi-plugin-lua51                                                [---------------------------------------------------] 100%
+(2008/2032) upgrading uwsgi-plugin-php-legacy                                           [---------------------------------------------------] 100%
+(2009/2032) upgrading v2ray-domain-list-community                                       [---------------------------------------------------] 100%
+(2010/2032) upgrading v2ray-geoip                                                       [---------------------------------------------------] 100%
+(2011/2032) upgrading v2ray                                                             [---------------------------------------------------] 100%
+(2012/2032) upgrading video-downloader                                                  [---------------------------------------------------] 100%
+(2013/2032) upgrading vim-coc-pyright-git                                               [---------------------------------------------------] 100%
+(2014/2032) upgrading vim-ultisnips                                                     [---------------------------------------------------] 100%
+(2015/2032) upgrading visual-studio-code-bin                                            [---------------------------------------------------] 100%
+==> NOTE: Custom flags should be put directly in: ~/.config/code-flags.conf
+(2016/2032) upgrading vulkan-headers                                                    [---------------------------------------------------] 100%
+(2017/2032) upgrading waybar                                                            [---------------------------------------------------] 100%
+(2018/2032) upgrading wireshark-cli                                                     [---------------------------------------------------] 100%
+(2019/2032) upgrading wireshark-qt                                                      [---------------------------------------------------] 100%
+(2020/2032) upgrading wofi                                                              [---------------------------------------------------] 100%
+(2021/2032) upgrading xapp-symbolic-icons                                               [---------------------------------------------------] 100%
+(2022/2032) upgrading xapp                                                              [---------------------------------------------------] 100%
+(2023/2032) upgrading xed                                                               [---------------------------------------------------] 100%
+(2024/2032) upgrading xmobar                                                            [---------------------------------------------------] 100%
+(2025/2032) upgrading yapf                                                              [---------------------------------------------------] 100%
+(2026/2032) upgrading youtube-dl-git                                                    [---------------------------------------------------] 100%
+(2027/2032) upgrading youtube-search-python                                             [---------------------------------------------------] 100%
+(2028/2032) upgrading yt-dlp-ejs                                                        [---------------------------------------------------] 100%
+(2029/2032) upgrading zapzap                                                            [---------------------------------------------------] 100%
+(2030/2032) upgrading zed                                                               [---------------------------------------------------] 100%
+(2031/2032) upgrading zenmap                                                            [---------------------------------------------------] 100%
+(2032/2032) upgrading zim                                                               [---------------------------------------------------] 100%
+:: Running post-transaction hooks...
+( 1/32) Creating system user accounts...
+( 2/32) Creating temporary files...
+( 3/32) Updating udev hardware database...
+( 4/32) Applying kernel sysctl settings...
+( 5/32) Reloading system manager configuration...
+( 6/32) Reloading user manager configuration...
+( 7/32) Updating the MIME type database...
+( 8/32) Restarting marked services...
+( 9/32) Reloading device manager configuration...
+(10/32) Arming ConditionNeedsUpdate...
+(11/32) Rebuilding certificate stores...
+(12/32) Updating module dependencies...
+(13/32) Install DKMS modules
+==> dkms install --no-depmod acpi_call/1.2.2 -k 6.18.5-arch1-1
+Deprecated feature: CLEAN (/usr/src/acpi_call-1.2.2/dkms.conf)
+==> dkms install --no-depmod acpi_ec/r30.e83e5a6 -k 6.18.5-arch1-1
+Deprecated feature: CLEAN (/usr/src/acpi_ec-r30.e83e5a6/dkms.conf)
+==> dkms install --no-depmod ryzen_smu/185.21c1e2c -k 6.19.0-rc5-1-amd-drm-fixes-gd04f73668beb
+==> dkms install --no-depmod ryzen_smu/185.21c1e2c -k 6.12.65-1-lts
+==> dkms install --no-depmod ovpn-dco/0.2.20251017 -k 6.12.65-1-lts
+Deprecated feature: CLEAN (/usr/src/ovpn-dco-0.2.20251017/dkms.conf)
+==> dkms install --no-depmod scap/8.0.0 -k 6.18.5-arch1-1
+==> dkms install --no-depmod scap/8.0.0 -k 6.12.65-1-lts
+==> dkms install --no-depmod ovpn-dco/0.2.20251017 -k 6.19.0-rc5-1-amd-drm-fixes-gd04f73668beb
+Deprecated feature: CLEAN (/var/lib/dkms/ovpn-dco/0.2.20251017/source/dkms.conf)
+==> dkms install --no-depmod broadcom-wl/6.30.223.271 -k 6.19.0-rc5-1-amd-drm-fixes-gd04f73668beb
+==> dkms install --no-depmod system76-acpi-dkms/1.0.2.r15.g7bae1af -k 6.12.65-1-lts
+==> dkms install --no-depmod acpi_ec/r30.e83e5a6 -k 6.12.65-1-lts
+Deprecated feature: CLEAN (/var/lib/dkms/acpi_ec/r30.e83e5a6/source/dkms.conf)
+==> dkms install --no-depmod ovpn-dco/0.2.20251017 -k 6.18.5-arch1-1
+Deprecated feature: CLEAN (/var/lib/dkms/ovpn-dco/0.2.20251017/source/dkms.conf)
+==> dkms install --no-depmod broadcom-wl/6.30.223.271 -k 6.12.65-1-lts
+==> dkms install --no-depmod ryzen_smu/185.21c1e2c -k 6.18.5-arch1-1
+==> dkms install --no-depmod acpi_call/1.2.2 -k 6.19.0-rc5-1-amd-drm-fixes-gd04f73668beb
+Deprecated feature: CLEAN (/var/lib/dkms/acpi_call/1.2.2/source/dkms.conf)
+==> dkms install --no-depmod broadcom-wl/6.30.223.271 -k 6.18.5-arch1-1
+==> dkms install --no-depmod system76-acpi-dkms/1.0.2.r15.g7bae1af -k 6.18.5-arch1-1
+==> dkms install --no-depmod scap/8.0.0 -k 6.19.0-rc5-1-amd-drm-fixes-gd04f73668beb
+==> dkms install --no-depmod acpi_call/1.2.2 -k 6.12.65-1-lts
+Deprecated feature: CLEAN (/var/lib/dkms/acpi_call/1.2.2/source/dkms.conf)
+==> dkms install --no-depmod system76-acpi-dkms/1.0.2.r15.g7bae1af -k 6.19.0-rc5-1-amd-drm-fixes-gd04f73668beb
+==> dkms install --no-depmod acpi_ec/r30.e83e5a6 -k 6.19.0-rc5-1-amd-drm-fixes-gd04f73668beb
+Deprecated feature: CLEAN (/var/lib/dkms/acpi_ec/r30.e83e5a6/source/dkms.conf)
+==> depmod 6.12.65-1-lts
