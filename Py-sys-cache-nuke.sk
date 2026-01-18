@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+# -----------------------------------------------------------------------------
+# system-cache-nuke
+#
+# Purpose:
+#   Clean user and system caches typically involved after package churn:
+#     - yay cache (default: ~/.cache/yay)
+#     - pacman package cache (/var/cache/pacman/pkg)
+#     - orphan packages ("ghost libraries") that no longer have dependents
+#
+# Safety defaults:
+#   - Dry-run by default: prints what it would do.
+#   - Requires --force to actually delete caches or remove orphans.
+#
+# Usage:
+#   system-cache-nuke --dry-run
+#   system-cache-nuke --force --orphans --pacman-cache --yay-cache
+#
+# Options:
+#   --force                 Actually perform actions (otherwise dry-run)
+#   --yay-cache             Clean ~/.cache/yay (and related AUR helpers if found)
+#   --pacman-cache          Clean /var/cache/pacman/pkg (keeps nothing)
+#   --orphans               Remove orphan packages (pacman -Qtdq) using -Rns
+#   --all                   Equivalent to: --yay-cache --pacman-cache --orphans
+#   -y, --yes               Pass --noconfirm to pacman where applicable
+#   -h, --help              Show help
+#
+# Environment:
+#   HELP_PAGER              Override pager for --help (default: less -R or cat)
+# -----------------------------------------------------------------------------
+set -euo pipefail
+
+function _help() {
+  cat <<'EOF'
+system-cache-nuke
+
+Clean yay cache, pacman cache, and remove orphan packages.
+
+Examples:
+  system-cache-nuke --dry-run --all
+  system-cache-nuke --force --all
+  system-cache-nuke --force --orphans -y
+
+Notes:
+  - Orphans are computed by: pacman -Qtdq
+  - Pacman cache path: /var/cache/pacman/pkg
+  - yay cache path: ~/.cache/yay
+  - This script is intentionally blunt. Use --dry-run first.
+
+Environment:
+  HELP_PAGER  Override pager for --help (default: less -R if present else cat)
+EOF
+}
+
+function _page_help() {
+  local pager="${HELP_PAGER:-}"
+  if [[ -z "$pager" ]]; then
+    if command -v less >/dev/null 2>&1; then
+      pager='less -R'
+    else
+      pager='cat'
+    fi
+  fi
+  _help | eval "$pager"
+}
+
+function _die() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
+
+function _need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || _die "Missing required command: $1"
+}
+
+function _as_root_prefix() {
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    printf '%s' ""
+  else
+    _need_cmd sudo
+    printf '%s' "sudo "
+  fi
+}
+
+function _rm_rf() {
+  local path="$1"
+  local force="$2"
+
+  if [[ -e "$path" ]]; then
+    if [[ "$force" == "1" ]]; then
+      rm -rf --one-file-system "$path"
+    else
+      printf '[dry-run] rm -rf %q\n' "$path"
+    fi
+  else
+    printf '[info] not present: %s\n' "$path"
+  fi
+}
+
+function _clean_yay_cache() {
+  local force="$1"
+
+  local yay_dir="${HOME}/.cache/yay"
+  printf '[task] yay cache: %s\n' "$yay_dir"
+  _rm_rf "$yay_dir" "$force"
+
+  # Common additional AUR helper caches (best-effort, optional).
+  local paru_dir="${HOME}/.cache/paru"
+  if [[ -d "$paru_dir" ]]; then
+    printf '[task] paru cache: %s\n' "$paru_dir"
+    _rm_rf "$paru_dir" "$force"
+  fi
+}
+
+function _clean_pacman_cache() {
+  local force="$1"
+
+  local cache_dir='/var/cache/pacman/pkg'
+  printf '[task] pacman cache: %s\n' "$cache_dir"
+
+  local sudo_prefix
+  sudo_prefix="$(_as_root_prefix)"
+
+  if [[ -d "$cache_dir" ]]; then
+    if [[ "$force" == "1" ]]; then
+      # Delete only package archives and signatures; keep directory structure.
+      # This is “nuke” behavior: no retention.
+      eval "${sudo_prefix}bash -c 'rm -f -- ${cache_dir}/*.pkg.tar.* ${cache_dir}/*.sig'"
+
+      # If paccache exists, it may also manage related caches; optional.
+      if command -v paccache >/dev/null 2>&1; then
+        # Ensure no retained versions.
+        eval "${sudo_prefix}paccache -r -k 0 || true"
+      fi
+    else
+      printf '[dry-run] %sbash -c %q\n' \
+        "$sudo_prefix" \
+        "rm -f -- ${cache_dir}/*.pkg.tar.* ${cache_dir}/*.sig"
+      if command -v paccache >/dev/null 2>&1; then
+        printf '[dry-run] %spaccache -r -k 0\n' "$sudo_prefix"
+      fi
+    fi
+  else
+    printf '[info] not present: %s\n' "$cache_dir"
+  fi
+}
+
+function _remove_orphans() {
+  local force="$1"
+  local noconfirm="$2"
+
+  printf '[task] remove orphans (pacman -Qtdq)\n'
+
+  local sudo_prefix
+  sudo_prefix="$(_as_root_prefix)"
+
+  # Orphans list may be empty; avoid failing the script.
+  local orphans=''
+  orphans="$(pacman -Qtdq 2>/dev/null || true)"
+
+  if [[ -z "$orphans" ]]; then
+    printf '[info] no orphans found.\n'
+    return 0
+  fi
+
+  printf '[info] orphans:\n%s\n' "$orphans"
+
+  if [[ "$force" == "1" ]]; then
+    if [[ "$noconfirm" == "1" ]]; then
+      eval "${sudo_prefix}pacman -Rns --noconfirm ${orphans}"
+    else
+      eval "${sudo_prefix}pacman -Rns ${orphans}"
+    fi
+  else
+    if [[ "$noconfirm" == "1" ]]; then
+      printf '[dry-run] %spacman -Rns --noconfirm %s\n' \
+        "$sudo_prefix" \
+        "$(printf '%s\n' "$orphans" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+    else
+      printf '[dry-run] %spacman -Rns %s\n' \
+        "$sudo_prefix" \
+        "$(printf '%s\n' "$orphans" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+    fi
+  fi
+}
+
+# ------------------------------ main -----------------------------------------
+force='0'
+do_yay='0'
+do_pacman='0'
+do_orphans='0'
+noconfirm='0'
+
+# Support an explicit --dry-run flag for readability (default is dry-run anyway).
+dry_run='1'
+
+while (($#)); do
+  case "$1" in
+    --force)
+      force='1'
+      dry_run='0'
+      ;;
+    --dry-run)
+      force='0'
+      dry_run='1'
+      ;;
+    --yay-cache)
+      do_yay='1'
+      ;;
+    --pacman-cache)
+      do_pacman='1'
+      ;;
+    --orphans)
+      do_orphans='1'
+      ;;
+    --all)
+      do_yay='1'
+      do_pacman='1'
+      do_orphans='1'
+      ;;
+    -y|--yes)
+      noconfirm='1'
+      ;;
+    -h|--help)
+      _page_help
+      exit 0
+      ;;
+    *)
+      _die "Unknown argument: $1"
+      ;;
+  esac
+  shift
+done
+
+_need_cmd pacman
+_need_cmd rm
+_need_cmd sed
+_need_cmd tr
+
+if [[ "$do_yay" == "0" && "$do_pacman" == "0" && "$do_orphans" == "0" ]]; then
+  _die "No tasks selected. Use --all or one of --yay-cache/--pacman-cache/--orphans."
+fi
+
+if [[ "$dry_run" == "1" ]]; then
+  printf '[mode] dry-run (use --force to actually change the system)\n'
+else
+  printf '[mode] FORCE enabled (changes will be applied)\n'
+fi
+
+if [[ "$do_yay" == "1" ]]; then
+  _clean_yay_cache "$force"
+fi
+
+if [[ "$do_pacman" == "1" ]]; then
+  _clean_pacman_cache "$force"
+fi
+
+if [[ "$do_orphans" == "1" ]]; then
+  _remove_orphans "$force" "$noconfirm"
+fi
