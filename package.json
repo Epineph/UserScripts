@@ -16,7 +16,7 @@
     "http-proxy-agent": "^7.0.2",
     "http-reasons": "^0.1.0",
     "http-status": "^2.1.0",
-    "prettier-plugin-sh": "^0.17.4",
+    "prettier-plugin-sh": "^0.18.0",
     "sh-syntax": "^0.5.8",
     "tls": "^0.0.1",
     "wappalyzer-cli": "^1.0.0",
