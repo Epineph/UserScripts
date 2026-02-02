@@ -1,0 +1,10 @@
+archzfs
+Maintainers: Jan Houben (minextu), Luchesar Iliev (kerberizer), and others
+Description: Packages for ZFS on Arch Linux.
+Upstream page: https://github.com/archzfs/archzfs
+Key-ID: 
+
+3A9917BF0DED5C13F69AC68FABEC0A1208037BE9
+[archzfs]
+# Uses a CDN, should be worldwide.
+Server = https://github.com/archzfs/archzfs/releases/download/experimental
