@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-disk-usage-report.py — Scan directories recursively and report biggest space users.
+disk_usage_report.py — Scan directories recursively and report biggest space users.
 
 Features:
   - Recursive scan of one or more root paths.
@@ -12,16 +12,16 @@ Features:
 
 Examples:
   # Simple overview of the whole system (excluding pseudo FS):
-  python3 disk-usage-report.py
+  python3 disk_usage_report.py
 
   # Focus only on the LUKS/LVM-based system (/ and /home) and ignore /shared:
-  python3 disk-usage-report.py --roots / /home --exclude /shared
+  python3 disk_usage_report.py --roots / /home --exclude /shared
 
   # Deeper directory buckets and more items:
-  python3 disk-usage-report.py --max-depth 3 --top-dirs 40 --top-files 60
+  python3 disk_usage_report.py --max-depth 3 --top-dirs 40 --top-files 60
 
   # Export results to a CSV under $HOME/exported_csv_logs and show extra info:
-  python3 disk-usage-report.py --csv --verbose
+  python3 disk_usage_report.py --csv --verbose
 """
 
 import argparse
@@ -137,7 +137,7 @@ def default_csv_path(script_stem: str, filename: str) -> Path:
     Build a per-run CSV output path under $HOME/exported_csv_logs.
 
     Example for script_stem="disk_usage_report":
-      $HOME/exported_csv_logs/disk_usage_report/logs/20251205_210101/filename
+        $HOME/exported_csv_logs/disk_usage_report/logs/20251205_210101/filename
     """
     base = (
         Path(os.path.expanduser("~"))
@@ -159,10 +159,6 @@ class ReportData:
     dir_sizes: Dict[str, int]
     top_files: List[Tuple[int, str]]
     total_bytes: int
-    size_mode: str  # "apparent" | "allocated"
-    dirs_scanned: int
-    files_scanned: int
-    errors: int
 
 
 # ─────────────────────────────── Core Logic ───────────────────────────────
@@ -173,9 +169,6 @@ def scan_roots(
     exclude: List[str],
     max_depth: int,
     top_files_limit: int,
-    *,
-    one_file_system: bool = False,
-    use_allocated_size: bool = False,
 ) -> ReportData:
     """
     Walk given roots, accumulating directory "bucket" sizes and top files.
@@ -185,17 +178,6 @@ def scan_roots(
     dir_sizes: Dict[str, int] = {}
     top_files: List[Tuple[int, str]] = []
     total_bytes = 0
-    dirs_scanned = 0
-    files_scanned = 0
-    errors = 0
-
-    def size_for_stat(st: os.stat_result) -> int:
-        if use_allocated_size:
-            blocks = getattr(st, "st_blocks", None)
-            if blocks is not None:
-                # POSIX: st_blocks is 512-byte blocks.
-                return int(blocks) * 512
-        return int(st.st_size)
 
     for root in roots:
         if not os.path.isdir(root):
@@ -205,56 +187,13 @@ def scan_roots(
             )
             continue
 
-        root_dev: int | None = None
-        if one_file_system:
-            try:
-                root_dev = os.stat(root).st_dev
-            except OSError as e:
-                errors += 1
-                print(
-                    f"[WARN] Cannot stat root for --one-file-system: {root} ({e})",
-                    file=sys.stderr,
-                )
-                continue
-
-        def on_walk_error(err: OSError) -> None:
-            nonlocal errors
-            errors += 1
-
-        for dirpath, dirnames, filenames in os.walk(
-            root,
-            topdown=True,
-            onerror=on_walk_error,
-        ):
-            dirs_scanned += 1
+        for dirpath, dirnames, filenames in os.walk(root, topdown=True):
             dirpath_real = os.path.realpath(dirpath)
 
             # Skip excluded prefixes entirely
             if is_under(dirpath_real, exclude_set):
                 dirnames[:] = []  # Do not descend further
                 continue
-
-            # Prune subdirectories early to avoid descending into excluded paths
-            # (and optionally, other filesystems).
-            if dirnames:
-                kept: List[str] = []
-                for d in dirnames:
-                    candidate = os.path.join(dirpath, d)
-                    candidate_real = os.path.realpath(candidate)
-
-                    if is_under(candidate_real, exclude_set):
-                        continue
-
-                    if root_dev is not None:
-                        try:
-                            if os.stat(candidate, follow_symlinks=False).st_dev != root_dev:
-                                continue
-                        except OSError:
-                            errors += 1
-                            continue
-
-                    kept.append(d)
-                dirnames[:] = kept
 
             # Compute the bucket for this directory
             bucket = dir_bucket(root, dirpath_real, max_depth)
@@ -266,16 +205,14 @@ def scan_roots(
                     st = os.lstat(fpath)
                 except OSError:
                     # Permission error / broken symlink / transient file
-                    errors += 1
                     continue
 
                 # Only count regular files; skip sockets, FIFOs, etc.
                 if not stat.S_ISREG(st.st_mode):
                     continue
 
-                size = size_for_stat(st)
+                size = st.st_size
                 total_bytes += size
-                files_scanned += 1
 
                 # Accumulate into bucket
                 dir_sizes[bucket] = dir_sizes.get(bucket, 0) + size
@@ -283,16 +220,7 @@ def scan_roots(
                 # Maintain top-N largest files
                 add_top_file(top_files, size, fpath, top_files_limit)
 
-    size_mode = "allocated" if use_allocated_size else "apparent"
-    return ReportData(
-        dir_sizes=dir_sizes,
-        top_files=top_files,
-        total_bytes=total_bytes,
-        size_mode=size_mode,
-        dirs_scanned=dirs_scanned,
-        files_scanned=files_scanned,
-        errors=errors,
-    )
+    return ReportData(dir_sizes=dir_sizes, top_files=top_files, total_bytes=total_bytes)
 
 
 # ─────────────────────────────── Reporting ───────────────────────────────
@@ -307,7 +235,7 @@ def export_csv(
     Export directory buckets and top files into a single CSV.
 
     CSV schema:
-      kind, rank, size_bytes, size_human, path
+    kind, rank, size_bytes, size_human, path
     """
     sorted_dirs = sorted(
         report.dir_sizes.items(),
@@ -356,17 +284,10 @@ def print_report(
         console.print("[bold]== Disk Usage Report ==[/bold]")
         console.print()
         console.print(
-            f"Total {report.size_mode} size of regular files scanned: "
+            "Total size of regular files scanned: "
             f"[bold]{human_bytes(report.total_bytes)}[/bold]"
         )
         console.print()
-        if verbose:
-            console.print(
-                f"Directories visited: [bold]{report.dirs_scanned}[/bold] | "
-                f"Files counted: [bold]{report.files_scanned}[/bold] | "
-                f"Errors: [bold]{report.errors}[/bold]"
-            )
-            console.print()
 
         # Top directory buckets
         sorted_dirs = sorted(
@@ -425,18 +346,8 @@ def print_report(
     print()
     print("=== Disk Usage Report ===")
     print()
-    print(
-        f"Total {report.size_mode} size of regular files scanned: "
-        f"{human_bytes(report.total_bytes)}"
-    )
+    print(f"Total size of regular files scanned: {human_bytes(report.total_bytes)}")
     print()
-    if verbose:
-        print(
-            f"Directories visited: {report.dirs_scanned} | "
-            f"Files counted: {report.files_scanned} | "
-            f"Errors: {report.errors}"
-        )
-        print()
 
     # Top directory buckets
     print(f"--- Top {top_dirs_limit} directory buckets ---")
@@ -545,24 +456,6 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--one-file-system",
-        action="store_true",
-        help=(
-            "Do not cross filesystem boundaries when walking each root "
-            "(similar to `du -x`)."
-        ),
-    )
-
-    parser.add_argument(
-        "--allocated",
-        action="store_true",
-        help=(
-            "Use allocated size (st_blocks*512) instead of apparent size (st_size). "
-            "This more closely matches `du`, especially for sparse files."
-        ),
-    )
-
-    parser.add_argument(
         "--no-rich",
         action="store_true",
         help="Disable Rich-based pretty printing even if Rich is installed.",
@@ -590,23 +483,11 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
 def main(argv: List[str]) -> int:
     args = parse_args(argv)
 
-    if args.max_depth < 0:
-        print("[ERROR] --max-depth must be >= 0", file=sys.stderr)
-        return 2
-    if args.top_dirs < 0:
-        print("[ERROR] --top-dirs must be >= 0", file=sys.stderr)
-        return 2
-    if args.top_files < 0:
-        print("[ERROR] --top-files must be >= 0", file=sys.stderr)
-        return 2
-
     report = scan_roots(
         roots=args.roots,
         exclude=args.exclude,
         max_depth=args.max_depth,
         top_files_limit=args.top_files,
-        one_file_system=bool(args.one_file_system),
-        use_allocated_size=bool(args.allocated),
     )
 
     csv_path: Path | None = None
