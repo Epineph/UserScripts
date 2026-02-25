@@ -4,71 +4,91 @@ set -euo pipefail
 # =============================================================================
 # browser-bench.sh
 #
-# Systematic, repeatable browser resource logging for Arch Linux.
+# Systematic browser benchmarking logger (CPU + RSS, optional temperature).
 #
-# What it does:
-#   - Launches a browser with an isolated, disposable profile per run.
-#   - Opens a given URL.
-#   - Samples CPU% (approx) + memory (RSS, aggregated over the browser process
-#     tree) at a fixed interval.
-#   - Writes per-sample data to CSV + a per-run summary CSV.
+# QUICK START
+#   ./browser-bench.sh all \
+#     --browsers "chromium=chromium,thorium=thorium-browser-avx2" \
+#     --outroot "$HOME/browsers"
 #
-# What it does NOT do:
-#   - It does not “click Start” in benchmarks. You do that manually.
-#     The point is to make the measurement repeatable and captured as data.
+# What this does:
+#   - Balanced randomized trial order per (session × scenario), across browsers.
+#   - Isolated profile per trial (reduces cache carryover).
+#   - Appends raw samples + per-trial summaries + per-session summaries to CSVs.
+#   - Optional Hyprland "low effects" mode (automatic apply + automatic restore).
+#
+# What this does NOT do:
+#   - Auto-click benchmarks (you click "Start Test" after warmup).
+#
+# Output layout (default OUTROOT=$HOME/browsers):
+#   $OUTROOT/samples.csv   (raw time series, per sample)
+#   $OUTROOT/trials.csv    (per-trial summary)
+#   $OUTROOT/sessions.csv  (per-session aggregates)
+#   $OUTROOT/<browser>/... (mirrors of the same three CSVs)
 #
 # Dependencies:
-#   - bash, coreutils, procps (ps), util-linux (flock is not used), awk
-#   - No AUR required.
-#
+#   Required: python, ps, awk, sort
+#   Optional: hyprctl (only for --hypr-mode low)
 # =============================================================================
 
 function usage() {
-  cat <<'EOF'
+  cat <<'USAGE_EOF'
 Usage:
-  browser-bench.sh run \
-    --browser <cmd> \
-    --name <label> \
-    --scenario <name> \
-    --url <url> \
-    [--runs N] \
-    [--duration SEC] \
-    [--interval SEC] \
-    [--warmup SEC] \
-    [--outdir DIR] \
-    [--keep-profile]
+  browser-bench.sh all
+    [--browsers  "chromium=chromium,thorium=thorium-browser-avx2"]
+    [--scenarios "idle,speedometer,jetstream,motionmark,youtube"]
+    [--sessions  N]
+    [--trials    N]
+    [--interval  SEC]
+    [--seed      INT]
+    [--outroot   DIR]
+    [--hypr-mode keep|low]
+    [--no-temp]
+  browser-bench.sh --help
+
+Notes (important):
+  - For Speedometer / JetStream / MotionMark you must click "Start Test"
+    yourself. Do so immediately after the warmup ends.
+  - Trial order is randomized but balanced across browsers, to reduce drift
+    confounds (temperature, daemon activity, power state).
+  - Each trial uses a fresh isolated browser profile directory.
+
+Defaults:
+  --browsers   auto-detect: chromium + thorium-browser-avx2 if available
+  --scenarios  idle,speedometer,jetstream,motionmark,youtube
+  --sessions   1
+  --trials     5        (per browser, per scenario, per session)
+  --interval   1        (seconds between samples)
+  --seed       unset    (true random)
+  --outroot    $HOME/browsers
+  --hypr-mode  keep
+  --no-temp    off      (temperature logging enabled if available)
 
 Examples:
-  # 1) Baseline idle (about:blank)
-  browser-bench.sh run --browser chromium --name chromium \
-    --scenario idle --url about:blank --runs 5 --duration 120
+  1) Chromium vs Thorium AVX2:
+     ./browser-bench.sh all \
+       --browsers "chromium=chromium,thorium=thorium-browser-avx2"
 
-  # 2) Speedometer (you click "Start Test" in the page)
-  browser-bench.sh run --browser chromium --name chromium \
-    --scenario speedometer --url https://browserbench.org/Speedometer3.0/ \
-    --runs 5 --duration 600 --warmup 10
+  2) Quick run, fewer scenarios:
+     ./browser-bench.sh all \
+       --browsers "chromium=chromium,thorium=thorium-browser-avx2" \
+       --scenarios "idle,speedometer,jetstream" \
+       --trials 3 --sessions 1
 
-  # 3) JetStream (you click "Start Test")
-  browser-bench.sh run --browser thorium-browser --name thorium \
-    --scenario jetstream --url https://browserbench.org/JetStream2.0/ \
-    --runs 5 --duration 600 --warmup 10
+  3) Reproducible randomization:
+     ./browser-bench.sh all --seed 12345
 
-  # 4) YouTube video test (you start playback and pick 1080p60 manually)
-  browser-bench.sh run --browser chromium --name chromium \
-    --scenario yt1080p --url https://www.youtube.com/watch?v=dQw4w9WgXcQ \
-    --runs 3 --duration 180 --warmup 10
+  4) Run while Hyprland effects are reduced (automatic apply + restore):
+     ./browser-bench.sh all --hypr-mode low
 
-Outputs:
-  OUTDIR/
-    samples.csv        (one row per sample)
-    runs.csv           (one row per run, summary stats)
-    profiles/          (only if --keep-profile is used)
-
-Notes:
-  - Use identical window size, extensions disabled, and same Wayland/X11 mode
-    across browsers if you want clean comparisons.
-  - For benchmarks, start the test right after warmup ends (script prints a cue).
-EOF
+Hyprland low mode behaviour:
+  --hypr-mode low automatically runs:
+    animations:enabled        = 0
+    decoration:blur:enabled   = 0
+    decoration:shadow:enabled = 0
+    misc:vfr                  = 1
+  It also captures your previous values and restores them on exit.
+USAGE_EOF
 }
 
 function die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
@@ -77,31 +97,60 @@ function require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing dependency: $1"
 }
 
-function now_iso() {
-  date -Is
+function now_iso()   { date -Is; }
+function tz_name()   { date +%Z; }
+function date_ymd()  { date +%F; }
+function time_hms()  { date +%T; }
+
+function read_load1() {
+  awk '{print $1}' /proc/loadavg 2>/dev/null || echo ""
 }
 
-function sanitize() {
-  # Replace problematic chars for filenames.
-  printf '%s' "$1" | tr ' /:' '___'
+function count_processes() {
+  ps -e --no-headers 2>/dev/null | wc -l | awk '{print $1}'
 }
 
-function mk_outdir() {
-  local base="$1"
-  local name="$2"
-  local scenario="$3"
-  local ts
-  ts="$(date -Is | tr ':' '-')"
-  printf '%s/%s/%s/%s' "$base" "$(sanitize "$name")" "$(sanitize "$scenario")" \
-    "$(sanitize "$ts")"
+function count_running_services() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl list-units --type=service --state=running --no-legend 2>/dev/null \
+      | wc -l | awk '{print $1}'
+  else
+    echo ""
+  fi
+}
+
+function read_temp_c() {
+  # Reads max thermal zone temp if available. Returns "" if not.
+  local max_mc=""
+  local z t
+  for z in /sys/class/thermal/thermal_zone*/temp; do
+    [[ -r "$z" ]] || continue
+    t="$(cat "$z" 2>/dev/null || true)"
+    [[ "$t" =~ ^[0-9]+$ ]] || continue
+    if [[ -z "$max_mc" || "$t" -gt "$max_mc" ]]; then
+      max_mc="$t"
+    fi
+  done
+  [[ -n "$max_mc" ]] || { echo ""; return 0; }
+  awk -v mc="$max_mc" 'BEGIN{printf "%.1f", mc/1000.0}'
+}
+
+function read_proc_jiffies_total() {
+  awk 'NR==1 && $1=="cpu"{s=0; for(i=2;i<=NF;i++) s+=$i; print s}' /proc/stat
+}
+
+function read_proc_jiffies_pid() {
+  local pid="$1"
+  awk '{print $14+$15}' "/proc/${pid}/stat" 2>/dev/null || echo 0
+}
+
+function read_rss_kb_pid() {
+  local pid="$1"
+  awk '$1=="VmRSS:"{print $2}' "/proc/${pid}/status" 2>/dev/null || echo 0
 }
 
 function list_tree_pids() {
-  # Print PID + all descendants, one per line.
-  # Uses recursive PS traversal (portable enough for Arch).
   local root_pid="$1"
-
-  # BFS-style expansion.
   local -a queue
   local -A seen
   queue=("$root_pid")
@@ -112,8 +161,6 @@ function list_tree_pids() {
     queue=("${queue[@]:1}")
     printf '%s\n' "$pid"
 
-    # Children of pid:
-    # ps output: " PID"
     while IFS= read -r child; do
       [[ -z "$child" ]] && continue
       if [[ -z "${seen[$child]:-}" ]]; then
@@ -124,34 +171,11 @@ function list_tree_pids() {
   done
 }
 
-function read_proc_jiffies_total() {
-  # Total CPU jiffies from /proc/stat line "cpu  ..."
-  # Returns: sum(user,nice,system,idle,iowait,irq,softirq,steal,guest,guest_nice)
-  awk 'NR==1 && $1=="cpu"{
-    s=0; for(i=2;i<=NF;i++) s+=$i; print s
-  }' /proc/stat
-}
-
-function read_proc_jiffies_pid() {
-  # Process utime+stime from /proc/PID/stat
-  # Field 14 = utime, 15 = stime (1-indexed)
-  local pid="$1"
-  awk '{print $14+$15}' "/proc/${pid}/stat" 2>/dev/null || echo 0
-}
-
-function read_rss_kb_pid() {
-  # VmRSS in kB from /proc/PID/status
-  local pid="$1"
-  awk '$1=="VmRSS:"{print $2}' "/proc/${pid}/status" 2>/dev/null || echo 0
-}
-
 function sum_rss_kb_tree() {
   local root_pid="$1"
-  local sum=0
-  local pid rss
+  local sum=0 pid rss
   while IFS= read -r pid; do
     rss="$(read_rss_kb_pid "$pid")"
-    # rss is numeric kB
     sum=$((sum + rss))
   done < <(list_tree_pids "$root_pid")
   printf '%s' "$sum"
@@ -159,8 +183,7 @@ function sum_rss_kb_tree() {
 
 function sum_jiffies_tree() {
   local root_pid="$1"
-  local sum=0
-  local pid j
+  local sum=0 pid j
   while IFS= read -r pid; do
     j="$(read_proc_jiffies_pid "$pid")"
     sum=$((sum + j))
@@ -168,199 +191,510 @@ function sum_jiffies_tree() {
   printf '%s' "$sum"
 }
 
-function approx_cpu_pct_interval() {
-  # Approx CPU% over an interval, for the whole browser process tree:
-  #
-  # Let:
-  #   ΔJ_proc = delta jiffies (proc utime+stime summed over tree)
-  #   ΔJ_tot  = delta jiffies (total CPU)
-  #
-  # Then fraction of total CPU time:
-  #   f = ΔJ_proc / ΔJ_tot
-  #
-  # Convert to percent:
-  #   CPU% = 100 * f
-  #
-  # This is *aggregate across all cores* relative to the whole machine.
-  # A fully loaded single core on an 8-core machine is ~12.5% by this metric.
-  local dproc="$1"
-  local dtot="$2"
+function cpu_pct_from_deltas() {
+  local dproc="$1" dtot="$2"
   awk -v a="$dproc" -v b="$dtot" 'BEGIN{
     if (b<=0) {print 0; exit}
     printf "%.3f", (100.0*a)/b
   }'
 }
 
-function median_of_file() {
-  # Median of numeric column (1-based) from a CSV-like file (comma-separated),
-  # skipping header. Assumes no commas in numeric field.
-  local file="$1"
-  local col="$2"
-  awk -F',' -v c="$col" 'NR>1 {print $c}' "$file" | sort -n | awk '
+function median_col_csv() {
+  local file="$1" col="$2"
+  awk -F',' -v c="$col" 'NR>1{print $c}' "$file" | sort -n | awk '
     {a[NR]=$1}
     END{
-      if (NR==0) {print ""; exit}
-      if (NR%2==1) {print a[(NR+1)/2]}
-      else {print (a[NR/2]+a[NR/2+1])/2}
+      if(NR==0){print ""; exit}
+      if(NR%2==1){print a[(NR+1)/2]}
+      else{print (a[NR/2]+a[NR/2+1])/2}
     }'
 }
 
-function max_of_file() {
-  local file="$1"
-  local col="$2"
-  awk -F',' -v c="$col" 'NR>1 {if($c>m||NR==2)m=$c} END{print m}' "$file"
+function min_col_csv() {
+  local file="$1" col="$2"
+  awk -F',' -v c="$col" 'NR>1{if($c<m||NR==2)m=$c} END{print m}' "$file"
 }
 
-function min_of_file() {
-  local file="$1"
-  local col="$2"
-  awk -F',' -v c="$col" 'NR>1 {if($c<m||NR==2)m=$c} END{print m}' "$file"
+function max_col_csv() {
+  local file="$1" col="$2"
+  awk -F',' -v c="$col" 'NR>1{if($c>m||NR==2)m=$c} END{print m}' "$file"
 }
 
-function run_one() {
-  local browser_cmd="$1"
-  local name="$2"
-  local scenario="$3"
-  local url="$4"
-  local duration="$5"
-  local interval="$6"
-  local warmup="$7"
-  local outdir="$8"
-  local keep_profile="$9"
-  local run_idx="${10}"
+function ensure_csv_headers() {
+  local outroot="$1"
+  local samples="$outroot/samples.csv"
+  local trials="$outroot/trials.csv"
+  local sessions="$outroot/sessions.csv"
 
-  local run_id
-  run_id="$(date +%s)-${run_idx}"
+  if [[ ! -f "$samples" ]]; then
+    printf 'ts_iso,date,time,tz,session_id,session_index,scenario,url,' \
+      >"$samples"
+    printf 'browser,cmd,hypr_mode,trial_global,trial_in_session,iteration,' \
+      >>"$samples"
+    printf 'sample_idx,rss_kb,cpu_pct,temp_c\n' \
+      >>"$samples"
+  fi
+
+  if [[ ! -f "$trials" ]]; then
+    printf 'session_id,session_index,scenario,url,browser,cmd,hypr_mode,' \
+      >"$trials"
+    printf 'trial_global,trial_in_session,iteration,start_ts,end_ts,' \
+      >>"$trials"
+    printf 'duration_sec,interval_sec,warmup_sec,samples,' \
+      >>"$trials"
+    printf 'rss_med_kb,rss_min_kb,rss_max_kb,cpu_med_pct,cpu_min_pct,' \
+      >>"$trials"
+    printf 'cpu_max_pct,temp_before_c,temp_after_c,load1_before,load1_after,' \
+      >>"$trials"
+    printf 'procs_before,procs_after,services_before,services_after\n' \
+      >>"$trials"
+  fi
+
+  if [[ ! -f "$sessions" ]]; then
+    printf 'session_id,session_index,scenario,browser,trials,' \
+      >"$sessions"
+    printf 'rss_med_of_meds_kb,cpu_med_of_meds_pct,started_ts,ended_ts\n' \
+      >>"$sessions"
+  fi
+}
+
+function mirror_paths() {
+  local outroot="$1" browser="$2"
+  local bdir="$outroot/$browser"
+  mkdir -p "$bdir"
+  ensure_csv_headers "$bdir"
+  printf '%s' "$bdir"
+}
+
+function detect_default_browsers() {
+  local list=()
+  if command -v chromium >/dev/null 2>&1; then
+    list+=("chromium=chromium")
+  fi
+  if command -v thorium-browser-avx2 >/dev/null 2>&1; then
+    list+=("thorium=thorium-browser-avx2")
+  elif command -v thorium-browser >/dev/null 2>&1; then
+    list+=("thorium=thorium-browser")
+  elif command -v thorium >/dev/null 2>&1; then
+    list+=("thorium=thorium")
+  fi
+  ((${#list[@]} > 0)) || die "No browsers detected. Use --browsers."
+  local IFS=,
+  echo "${list[*]}"
+}
+
+function parse_browsers() {
+  local raw="$1"
+  declare -g -a B_NAMES=()
+  declare -g -a B_CMDS=()
+
+  local IFS=,
+  local item
+  for item in $raw; do
+    item="${item#"${item%%[![:space:]]*}"}"
+    item="${item%"${item##*[![:space:]]}"}"
+    [[ -n "$item" ]] || continue
+    if [[ "$item" == *"="* ]]; then
+      B_NAMES+=("${item%%=*}")
+      B_CMDS+=("${item#*=}")
+    else
+      B_NAMES+=("$(basename "${item%% *}")")
+      B_CMDS+=("$item")
+    fi
+  done
+  ((${#B_NAMES[@]} > 0)) || die "No valid browsers parsed."
+}
+
+function scenario_defaults() {
+  declare -g -A SCEN_URL=()
+  declare -g -A SCEN_DUR=()
+  declare -g -A SCEN_WARM=()
+
+  SCEN_URL["idle"]="about:blank"
+  SCEN_DUR["idle"]=120
+  SCEN_WARM["idle"]=5
+
+  SCEN_URL["speedometer"]="https://browserbench.org/Speedometer3.0/"
+  SCEN_DUR["speedometer"]=600
+  SCEN_WARM["speedometer"]=10
+
+  SCEN_URL["jetstream"]="https://browserbench.org/JetStream2.0/"
+  SCEN_DUR["jetstream"]=600
+  SCEN_WARM["jetstream"]=10
+
+  SCEN_URL["motionmark"]="https://browserbench.org/MotionMark1.3/"
+  SCEN_DUR["motionmark"]=420
+  SCEN_WARM["motionmark"]=10
+
+  SCEN_URL["youtube"]="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+  SCEN_DUR["youtube"]=180
+  SCEN_WARM["youtube"]=10
+}
+
+function get_next_session_index() {
+  local outroot="$1"
+  local sessions="$outroot/sessions.csv"
+  if [[ ! -f "$sessions" ]]; then
+    echo 1
+    return 0
+  fi
+  local last
+  last="$(awk -F',' 'NR>1{v=$2} END{print v}' "$sessions" 2>/dev/null || true)"
+  [[ -n "$last" ]] || { echo 1; return 0; }
+  echo $((last + 1))
+}
+
+function hypr_get_int() {
+  local key="$1"
+  command -v hyprctl >/dev/null 2>&1 || { echo ""; return 0; }
+
+  local out
+  out="$(hyprctl getoption "$key" -j 2>/dev/null || true)"
+  [[ -n "$out" ]] || { echo ""; return 0; }
+
+  python - <<'PY' <<<"$out" 2>/dev/null || true
+import json,sys
+j=json.load(sys.stdin)
+v=j.get("int", j.get("float", ""))
+print(v)
+PY
+}
+
+function hypr_apply_low_mode() {
+  command -v hyprctl >/dev/null 2>&1 || return 0
+  hyprctl --batch "\
+keyword animations:enabled 0; \
+keyword decoration:blur:enabled 0; \
+keyword decoration:shadow:enabled 0; \
+keyword misc:vfr 1" >/dev/null 2>&1 || true
+}
+
+function hypr_apply_values() {
+  command -v hyprctl >/dev/null 2>&1 || return 0
+  local anim="$1" blur="$2" shad="$3" vfr="$4"
+  hyprctl --batch "\
+keyword animations:enabled ${anim}; \
+keyword decoration:blur:enabled ${blur}; \
+keyword decoration:shadow:enabled ${shad}; \
+keyword misc:vfr ${vfr}" >/dev/null 2>&1 || true
+}
+
+function run_trial() {
+  local outroot="$1" bname="$2" bcmd="$3" scen="$4" hypr_mode="$5"
+  local session_id="$6" session_idx="$7" trial_global="$8"
+  local trial_in_session="$9" iteration="${10}"
+  local interval="${11}" no_temp="${12}"
+
+  local url="${SCEN_URL[$scen]}"
+  local dur="${SCEN_DUR[$scen]}"
+  local warm="${SCEN_WARM[$scen]}"
+
+  local start_ts end_ts tz temp_b temp_a load_b load_a procs_b procs_a
+  local svcs_b svcs_a
+
+  start_ts="$(now_iso)"
+  tz="$(tz_name)"
+
+  load_b="$(read_load1)"
+  procs_b="$(count_processes)"
+  svcs_b="$(count_running_services)"
+  if [[ "$no_temp" == "0" ]]; then
+    temp_b="$(read_temp_c)"
+  else
+    temp_b=""
+  fi
 
   local profile_dir
-  profile_dir="$(mktemp -d -p "${outdir}" "profile.${name}.${scenario}.${run_id}.XXXXXXXX")"
+  profile_dir="$(mktemp -d -p "$outroot" "profile.${bname}.${scen}.XXXXXXXX")"
 
-  local samples_csv="${outdir}/samples.csv"
-  local run_tmp="${outdir}/run.${run_id}.csv"
-
-  # Launch browser (best-effort: reduce first-run noise, background networking).
-  # Flags are Chromium-ish; if unsupported, they are ignored or may error.
-  # If your browser errors on flags, remove them below.
   set +e
-  "$browser_cmd" \
+  "$bcmd" \
     --user-data-dir="$profile_dir" \
     --no-first-run \
     --disable-sync \
     --disable-background-networking \
     "$url" >/dev/null 2>&1 &
   set -e
-
   local root_pid="$!"
-  sleep 0.2
+  sleep 0.3
+  kill -0 "$root_pid" 2>/dev/null || die "Browser did not start: $bcmd"
 
-  if ! kill -0 "$root_pid" 2>/dev/null; then
-    die "Browser process did not start: ${browser_cmd}"
+  printf '\nSession %s | Scenario %s | %s (iter %s) | Trial %s (order %s)\n' \
+    "$session_idx" "$scen" "$bname" "$iteration" "$trial_global" \
+    "$trial_in_session"
+  printf 'Warmup %ss then sample %ss every %ss. Click benchmark start after warmup.\n' \
+    "$warm" "$dur" "$interval"
+
+  if ((warm > 0)); then
+    sleep "$warm"
   fi
 
-  printf '\n'
-  printf 'Run %s/%s | %s | %s\n' "$run_idx" "$RUNS" "$name" "$scenario"
-  printf 'PID: %s\n' "$root_pid"
-  printf 'URL: %s\n' "$url"
-  printf 'Warmup: %ss, then sampling for %ss at %ss interval\n' \
-    "$warmup" "$duration" "$interval"
-  printf '\n'
-
-  if ((warmup > 0)); then
-    printf 'Warmup... (do any manual prep now: resize window, start benchmark)\n'
-    sleep "$warmup"
-  fi
-
-  printf 'Sampling START (t=0). Keep interaction consistent between runs.\n'
-
-  # Per-run CSV (easier to compute summary stats).
-  printf 'ts_iso,name,scenario,run_id,sample_idx,rss_kb,cpu_pct\n' >"$run_tmp"
+  local tmp
+  tmp="$(mktemp -p "$outroot" "trial.${session_id}.${trial_global}.XXXXXXXX.csv")"
+  printf 'ts_iso,date,time,tz,session_id,session_index,scenario,url,' \
+    >"$tmp"
+  printf 'browser,cmd,hypr_mode,trial_global,trial_in_session,iteration,' \
+    >>"$tmp"
+  printf 'sample_idx,rss_kb,cpu_pct,temp_c\n' \
+    >>"$tmp"
 
   local prev_tot prev_proc
   prev_tot="$(read_proc_jiffies_total)"
   prev_proc="$(sum_jiffies_tree "$root_pid")"
 
-  local t=0
-  local sample_idx=0
-
-  while ((t < duration)); do
-    if ! kill -0 "$root_pid" 2>/dev/null; then
-      printf 'Browser exited early at t=%ss; stopping sampling.\n' "$t"
-      break
-    fi
-
+  local sample_idx=0 elapsed=0
+  while ((elapsed < dur)); do
+    kill -0 "$root_pid" 2>/dev/null || break
     sleep "$interval"
-    t=$((t + interval))
+    elapsed=$((elapsed + interval))
     sample_idx=$((sample_idx + 1))
 
-    local cur_tot cur_proc d_tot d_proc cpu_pct rss_kb ts_iso
+    local cur_tot cur_proc d_tot d_proc cpu_pct rss_kb temp_c
     cur_tot="$(read_proc_jiffies_total)"
     cur_proc="$(sum_jiffies_tree "$root_pid")"
-
     d_tot=$((cur_tot - prev_tot))
     d_proc=$((cur_proc - prev_proc))
-
-    cpu_pct="$(approx_cpu_pct_interval "$d_proc" "$d_tot")"
+    cpu_pct="$(cpu_pct_from_deltas "$d_proc" "$d_tot")"
     rss_kb="$(sum_rss_kb_tree "$root_pid")"
-    ts_iso="$(now_iso)"
+    if [[ "$no_temp" == "0" ]]; then
+      temp_c="$(read_temp_c)"
+    else
+      temp_c=""
+    fi
 
-    printf '%s,%s,%s,%s,%s,%s,%s\n' \
-      "$ts_iso" "$name" "$scenario" "$run_id" "$sample_idx" "$rss_kb" "$cpu_pct" \
-      >>"$run_tmp"
+    printf '%s,%s,%s,%s,%s,%s,%s,%s,' \
+      "$(now_iso)" "$(date_ymd)" "$(time_hms)" "$tz" "$session_id" "$session_idx" \
+      "$scen" "$url" >>"$tmp"
+    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+      "$bname" "$bcmd" "$hypr_mode" "$trial_global" "$trial_in_session" \
+      "$iteration" "$sample_idx" "$rss_kb" "$cpu_pct" "$temp_c" >>"$tmp"
 
     prev_tot="$cur_tot"
     prev_proc="$cur_proc"
   done
 
-  printf 'Sampling END. Close the browser window now (if still open).\n'
-
-  # Attempt graceful terminate.
   kill -TERM "$root_pid" 2>/dev/null || true
   sleep 0.5
   kill -KILL "$root_pid" 2>/dev/null || true
 
-  # Append to global samples.csv (create header once).
-  if [[ ! -f "$samples_csv" ]]; then
-    head -n 1 "$run_tmp" >"$samples_csv"
-  fi
-  tail -n +2 "$run_tmp" >>"$samples_csv"
-
-  # Compute per-run summary stats (medians are robust).
-  # Columns:
-  #   6 rss_kb
-  #   7 cpu_pct
-  local rss_med rss_max rss_min cpu_med cpu_max cpu_min
-  rss_med="$(median_of_file "$run_tmp" 6)"
-  rss_max="$(max_of_file    "$run_tmp" 6)"
-  rss_min="$(min_of_file    "$run_tmp" 6)"
-  cpu_med="$(median_of_file "$run_tmp" 7)"
-  cpu_max="$(max_of_file    "$run_tmp" 7)"
-  cpu_min="$(min_of_file    "$run_tmp" 7)"
-
-  local runs_csv="${outdir}/runs.csv"
-  if [[ ! -f "$runs_csv" ]]; then
-    printf 'name,scenario,run_id,samples,rss_med_kb,rss_min_kb,rss_max_kb,' \
-      >>"$runs_csv"
-    printf 'cpu_med_pct,cpu_min_pct,cpu_max_pct\n' >>"$runs_csv"
+  end_ts="$(now_iso)"
+  load_a="$(read_load1)"
+  procs_a="$(count_processes)"
+  svcs_a="$(count_running_services)"
+  if [[ "$no_temp" == "0" ]]; then
+    temp_a="$(read_temp_c)"
+  else
+    temp_a=""
   fi
 
-  local nsamp
-  nsamp="$(awk 'END{print NR-1}' "$run_tmp")"
+  # tmp columns:
+  # 16=rss_kb, 17=cpu_pct, 18=temp_c
+  local nsamp rss_med rss_min rss_max cpu_med cpu_min cpu_max
+  nsamp="$(awk 'END{print NR-1}' "$tmp")"
+  rss_med="$(median_col_csv "$tmp" 16)"
+  rss_min="$(min_col_csv    "$tmp" 16)"
+  rss_max="$(max_col_csv    "$tmp" 16)"
+  cpu_med="$(median_col_csv "$tmp" 17)"
+  cpu_min="$(min_col_csv    "$tmp" 17)"
+  cpu_max="$(max_col_csv    "$tmp" 17)"
 
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
-    "$name" "$scenario" "$run_id" "$nsamp" \
+  ensure_csv_headers "$outroot"
+  cat "$tmp" >>"$outroot/samples.csv"
+
+  local bdir
+  bdir="$(mirror_paths "$outroot" "$bname")"
+  cat "$tmp" >>"$bdir/samples.csv"
+
+  # trials.csv columns are fixed by ensure_csv_headers() above.
+  printf '%s,%s,%s,%s,%s,%s,%s,' \
+    "$session_id" "$session_idx" "$scen" "$url" "$bname" "$bcmd" \
+    "$hypr_mode" >>"$outroot/trials.csv"
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,' \
+    "$trial_global" "$trial_in_session" "$iteration" "$start_ts" "$end_ts" \
+    "${SCEN_DUR[$scen]}" "$interval" "${SCEN_WARM[$scen]}" "$nsamp" \
+    >>"$outroot/trials.csv"
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
     "$rss_med" "$rss_min" "$rss_max" \
     "$cpu_med" "$cpu_min" "$cpu_max" \
-    >>"$runs_csv"
+    "$temp_b" "$temp_a" \
+    "$load_b" "$load_a" \
+    "$procs_b" "$procs_a" \
+    "$svcs_b" "$svcs_a" \
+    >>"$outroot/trials.csv"
 
-  if [[ "$keep_profile" == "1" ]]; then
-    mkdir -p "${outdir}/profiles"
-    mv "$profile_dir" "${outdir}/profiles/${name}.${scenario}.${run_id}"
-  else
-    rm -rf -- "$profile_dir"
+  printf '%s,%s,%s,%s,%s,%s,%s,' \
+    "$session_id" "$session_idx" "$scen" "$url" "$bname" "$bcmd" \
+    "$hypr_mode" >>"$bdir/trials.csv"
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,' \
+    "$trial_global" "$trial_in_session" "$iteration" "$start_ts" "$end_ts" \
+    "${SCEN_DUR[$scen]}" "$interval" "${SCEN_WARM[$scen]}" "$nsamp" \
+    >>"$bdir/trials.csv"
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+    "$rss_med" "$rss_min" "$rss_max" \
+    "$cpu_med" "$cpu_min" "$cpu_max" \
+    "$temp_b" "$temp_a" \
+    "$load_b" "$load_a" \
+    "$procs_b" "$procs_a" \
+    "$svcs_b" "$svcs_a" \
+    >>"$bdir/trials.csv"
+
+  rm -rf -- "$profile_dir"
+  rm -f -- "$tmp"
+
+  printf '  -> appended to %s/{samples.csv,trials.csv}\n' "$outroot"
+}
+
+function write_session_summaries() {
+  local outroot="$1" session_id="$2" session_idx="$3"
+  local trials="$outroot/trials.csv"
+  [[ -f "$trials" ]] || return 0
+
+  # trials.csv columns:
+  #  1 session_id
+  #  2 session_index
+  #  3 scenario
+  #  5 browser
+  # 11 start_ts
+  # 12 end_ts
+  # 17 rss_med_kb
+  # 20 cpu_med_pct
+  awk -F',' -v sid="$session_id" -v sidx="$session_idx" '
+    BEGIN{OFS=","}
+    NR==1{next}
+    $1==sid && $2==sidx{
+      scen=$3; brow=$5
+      key=scen SUBSEP brow
+      n[key]++
+      rss[key,n[key]]=$17+0
+      cpu[key,n[key]]=$20+0
+      st[key]=$11
+      en[key]=$12
+    }
+    END{
+      for (k in n){
+        split(k, a, SUBSEP); scen=a[1]; brow=a[2]
+        m=n[k]
+        delete vr; delete vc
+        for(i=1;i<=m;i++){ vr[i]=rss[k,i]; vc[i]=cpu[k,i] }
+        asort(vr); asort(vc)
+        if(m%2==1){ mr=vr[(m+1)/2]; mc=vc[(m+1)/2] }
+        else { mr=(vr[m/2]+vr[m/2+1])/2; mc=(vc[m/2]+vc[m/2+1])/2 }
+        print sid, sidx, scen, brow, m, mr, mc, st[k], en[k]
+      }
+    }' "$trials" >>"$outroot/sessions.csv"
+
+  local bi
+  for ((bi=0; bi<${#B_NAMES[@]}; bi++)); do
+    local bname="${B_NAMES[$bi]}"
+    local bdir="$outroot/$bname"
+    [[ -d "$bdir" ]] || continue
+    awk -F',' -v sid="$session_id" -v sidx="$session_idx" -v bn="$bname" '
+      BEGIN{OFS=","}
+      NR==1{next}
+      $1==sid && $2==sidx && $5==bn{
+        scen=$3; brow=$5
+        key=scen SUBSEP brow
+        n[key]++
+        rss[key,n[key]]=$17+0
+        cpu[key,n[key]]=$20+0
+        st[key]=$11
+        en[key]=$12
+      }
+      END{
+        for (k in n){
+          split(k, a, SUBSEP); scen=a[1]; brow=a[2]
+          m=n[k]
+          delete vr; delete vc
+          for(i=1;i<=m;i++){ vr[i]=rss[k,i]; vc[i]=cpu[k,i] }
+          asort(vr); asort(vc)
+          if(m%2==1){ mr=vr[(m+1)/2]; mc=vc[(m+1)/2] }
+          else { mr=(vr[m/2]+vr[m/2+1])/2; mc=(vc[m/2]+vc[m/2+1])/2 }
+          print sid, sidx, scen, brow, m, mr, mc, st[k], en[k]
+        }
+      }' "$trials" >>"$bdir/sessions.csv"
+  done
+}
+
+function shuffle_pairs() {
+  # Prints lines: "bidx iteration trial_in_session"
+  local nb="$1" nt="$2" seed="${3:-}"
+  python - "$nb" "$nt" "${seed:-}" <<'PY'
+import os, random, sys
+nb=int(sys.argv[1]); nt=int(sys.argv[2]); seed=sys.argv[3]
+pairs=[]
+for b in range(nb):
+  for i in range(1, nt+1):
+    pairs.append((b, i))
+if seed:
+  random.seed(int(seed))
+else:
+  random.seed(os.urandom(32))
+random.shuffle(pairs)
+for j,(b,i) in enumerate(pairs, start=1):
+  print(b, i, j)
+PY
+}
+
+function cmd_all() {
+  local browsers_raw="$1" scenarios_raw="$2" sessions="$3" trials="$4"
+  local interval="$5" seed="${6:-}" outroot="$7" hypr_mode="$8" no_temp="$9"
+
+  scenario_defaults
+  mkdir -p "$outroot"
+  ensure_csv_headers "$outroot"
+
+  parse_browsers "$browsers_raw"
+
+  local session_idx
+  session_idx="$(get_next_session_index "$outroot")"
+
+  local hypr_anim="" hypr_blur="" hypr_shad="" hypr_vfr=""
+  if [[ "$hypr_mode" == "low" ]]; then
+    hypr_anim="$(hypr_get_int "animations:enabled")"
+    hypr_blur="$(hypr_get_int "decoration:blur:enabled")"
+    hypr_shad="$(hypr_get_int "decoration:shadow:enabled")"
+    hypr_vfr="$(hypr_get_int "misc:vfr")"
+    hypr_apply_low_mode
+    trap 'hypr_apply_values "${hypr_anim:-1}" "${hypr_blur:-1}" \
+      "${hypr_shad:-1}" "${hypr_vfr:-1}"' EXIT
   fi
 
-  rm -f -- "$run_tmp"
-  printf 'Run saved. Summary appended to: %s\n' "$runs_csv"
+  local s
+  local IFS=,
+  for ((sess=1; sess<=sessions; sess++)); do
+    local session_id
+    session_id="$(date +%Y%m%d-%H%M%S)-${session_idx}"
+
+    printf '\n============================================================\n'
+    printf 'SESSION %s  (session_id=%s)\n' "$session_idx" "$session_id"
+    printf 'Browsers:  %s\n' "$browsers_raw"
+    printf 'Scenarios: %s\n' "$scenarios_raw"
+    printf 'Trials:    %s per browser per scenario\n' "$trials"
+    printf 'Interval:  %ss\n' "$interval"
+    printf 'Hypr mode: %s\n' "$hypr_mode"
+    printf 'Temp log:  %s\n' "$([[ "$no_temp" == "1" ]] && echo "disabled" || echo "enabled")"
+    printf '============================================================\n'
+
+    for s in $scenarios_raw; do
+      [[ -n "${SCEN_URL[$s]:-}" ]] || die "Unknown scenario: $s"
+
+      # trial_global is column 8 in trials.csv
+      local trial_global_start
+      trial_global_start="$(awk -F',' 'NR>1{v=$8} END{print v+0}' \
+        "$outroot/trials.csv" 2>/dev/null || echo 0)"
+      local trial_global="$trial_global_start"
+
+      while IFS=$' \t' read -r bidx iter order; do
+        trial_global=$((trial_global + 1))
+        run_trial "$outroot" "${B_NAMES[$bidx]}" "${B_CMDS[$bidx]}" \
+          "$s" "$hypr_mode" "$session_id" "$session_idx" \
+          "$trial_global" "$order" "$iter" "$interval" "$no_temp"
+      done < <(shuffle_pairs "${#B_NAMES[@]}" "$trials" "${seed:-}")
+    done
+
+    write_session_summaries "$outroot" "$session_id" "$session_idx"
+    session_idx=$((session_idx + 1))
+  done
 }
 
 # -----------------------------------------------------------------------------
@@ -369,75 +703,56 @@ function run_one() {
 require_cmd ps
 require_cmd awk
 require_cmd sort
-require_cmd date
-require_cmd mktemp
-require_cmd kill
+require_cmd python
 
 SUBCMD="${1:-}"
 shift || true
 
-if [[ "$SUBCMD" != "run" ]]; then
+if [[ -z "$SUBCMD" || "$SUBCMD" == "-h" || "$SUBCMD" == "--help" ]]; then
   usage
-  exit 1
+  exit 0
 fi
 
-BROWSER=""
-NAME=""
-SCENARIO=""
-URL=""
+if [[ "$SUBCMD" != "all" ]]; then
+  die "Only subcommand supported: all"
+fi
 
-RUNS=5
-DURATION=300
+BROWSERS_RAW=""
+SCENARIOS_RAW="idle,speedometer,jetstream,motionmark,youtube"
+SESSIONS=1
+TRIALS=5
 INTERVAL=1
-WARMUP=10
-OUTBASE="${HOME}/.cache/browser-bench"
-KEEP_PROFILE=0
+SEED=""
+OUTROOT="${HOME}/browsers"
+HYPR_MODE="keep"
+NO_TEMP=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --browser)   BROWSER="${2:-}"; shift 2 ;;
-    --name)      NAME="${2:-}"; shift 2 ;;
-    --scenario)  SCENARIO="${2:-}"; shift 2 ;;
-    --url)       URL="${2:-}"; shift 2 ;;
-    --runs)      RUNS="${2:-}"; shift 2 ;;
-    --duration)  DURATION="${2:-}"; shift 2 ;;
-    --interval)  INTERVAL="${2:-}"; shift 2 ;;
-    --warmup)    WARMUP="${2:-}"; shift 2 ;;
-    --outdir)    OUTBASE="${2:-}"; shift 2 ;;
-    --keep-profile) KEEP_PROFILE=1; shift 1 ;;
-    -h|--help) usage; exit 0 ;;
+    --browsers)   BROWSERS_RAW="${2:-}"; shift 2 ;;
+    --scenarios)  SCENARIOS_RAW="${2:-}"; shift 2 ;;
+    --sessions)   SESSIONS="${2:-}"; shift 2 ;;
+    --trials)     TRIALS="${2:-}"; shift 2 ;;
+    --interval)   INTERVAL="${2:-}"; shift 2 ;;
+    --seed)       SEED="${2:-}"; shift 2 ;;
+    --outroot)    OUTROOT="${2:-}"; shift 2 ;;
+    --hypr-mode)  HYPR_MODE="${2:-}"; shift 2 ;;
+    --no-temp)    NO_TEMP=1; shift 1 ;;
+    -h|--help)    usage; exit 0 ;;
     *) die "Unknown arg: $1" ;;
   esac
 done
 
-[[ -n "$BROWSER"  ]] || die "--browser is required"
-[[ -n "$NAME"     ]] || die "--name is required"
-[[ -n "$SCENARIO" ]] || die "--scenario is required"
-[[ -n "$URL"      ]] || die "--url is required"
+[[ "$SESSIONS" =~ ^[0-9]+$ ]] || die "--sessions must be integer"
+[[ "$TRIALS" =~ ^[0-9]+$   ]] || die "--trials must be integer"
+[[ "$INTERVAL" =~ ^[0-9]+$ ]] || die "--interval must be integer"
+((INTERVAL >= 1)) || die "--interval must be >= 1"
+[[ "$HYPR_MODE" == "keep" || "$HYPR_MODE" == "low" ]] \
+  || die "--hypr-mode must be keep|low"
 
-[[ "$RUNS" =~ ^[0-9]+$      ]] || die "--runs must be an integer"
-[[ "$DURATION" =~ ^[0-9]+$  ]] || die "--duration must be an integer (seconds)"
-[[ "$INTERVAL" =~ ^[0-9]+$  ]] || die "--interval must be an integer (seconds)"
-[[ "$WARMUP" =~ ^[0-9]+$    ]] || die "--warmup must be an integer (seconds)"
-
-if ((INTERVAL <= 0)); then
-  die "--interval must be >= 1"
+if [[ -z "$BROWSERS_RAW" ]]; then
+  BROWSERS_RAW="$(detect_default_browsers)"
 fi
 
-OUTDIR="$(mk_outdir "$OUTBASE" "$NAME" "$SCENARIO")"
-mkdir -p "$OUTDIR"
-
-printf 'Output directory: %s\n' "$OUTDIR"
-printf 'Per-sample CSV:   %s/samples.csv\n' "$OUTDIR"
-printf 'Per-run CSV:      %s/runs.csv\n' "$OUTDIR"
-printf '\n'
-
-for ((i=1; i<=RUNS; i++)); do
-  run_one "$BROWSER" "$NAME" "$SCENARIO" "$URL" \
-    "$DURATION" "$INTERVAL" "$WARMUP" "$OUTDIR" "$KEEP_PROFILE" "$i"
-done
-
-printf '\nAll runs complete.\n'
-printf 'Inspect:\n'
-printf '  %s/runs.csv\n' "$OUTDIR"
-printf '  %s/samples.csv\n' "$OUTDIR"
+cmd_all "$BROWSERS_RAW" "$SCENARIOS_RAW" "$SESSIONS" "$TRIALS" \
+  "$INTERVAL" "${SEED:-}" "$OUTROOT" "$HYPR_MODE" "$NO_TEMP"
