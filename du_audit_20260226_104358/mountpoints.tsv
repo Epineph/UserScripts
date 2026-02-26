@@ -1,0 +1,13 @@
+/	ext4	67497447424	12146511872	/dev/mapper/linux-root
+/dev	devtmpfs	0	7264882688	devtmpfs
+/dev/shm	tmpfs	88068096	7208943616	tmpfs
+/sys/firmware/efi/efivars	efivarfs	45914	80038	efivarfs
+/run	tmpfs	1339392	2917466112	tmpfs
+/run/credentials/systemd-cryptsetup@cryptroot.service	tmpfs	0	1048576	none
+/run/credentials/systemd-journald.service	tmpfs	0	1048576	none
+/tmp	tmpfs	30044160	7266971648	tmpfs
+/shared	fuseblk	67270705152	60438507520	/dev/nvme0n1p8
+/boot	ext4	158720000	1757503488	/dev/nvme0n1p6
+/home	ext4	42390740992	26202259456	/dev/mapper/linux-home
+/efi	vfat	37535744	1034092544	/dev/nvme0n1p1
+/run/user/1000	tmpfs	18288640	1441112064	tmpfs

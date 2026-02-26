@@ -2,8 +2,15 @@
 #===============================================================================
 # chPerms - Change ownership, group, and/or permissions for one or more targets.
 #
-# Version: 1.5.3
+# Version: 1.6.0
 # License: MIT
+#
+# FIXES vs your current state:
+#   1) Stops “never ends” behavior by NOT defaulting to `chown/chmod -c -R`
+#      (which can emit *one line per changed file* and takes ages on big trees).
+#      Per-item counting is now OPT-IN via --audit (or auto-enabled by -v).
+#   2) Keeps strict mode + ERR trap without the earlier arithmetic pitfalls.
+#   3) Coprocess runner correctly supports ENV=VAL prefixes (LC_ALL=C).
 #===============================================================================
 
 set -Eeuo pipefail
@@ -11,7 +18,7 @@ set -Eeuo pipefail
 #------------------------------------------------------------------------------
 # Globals
 #------------------------------------------------------------------------------
-VERSION="1.5.3"
+VERSION="1.6.0"
 
 DRY_RUN=false
 NOCONFIRM=false
@@ -24,6 +31,11 @@ MAX_VERBOSE_DIRS=50
 FAST=false
 AUTO_NEXT=false
 DEBUG=false
+
+# New:
+#   AUDIT=false  -> do not use chown/chmod -c (fast, no per-item counts)
+#   AUDIT=true   -> parse -c output (slow on large recursive trees)
+AUDIT=false
 
 ORIG_ARGS=("$@")
 
@@ -73,8 +85,8 @@ Operations (block-scoped):
   -p, --perm <PERMS>      755 | rwxr-xr-x | u=rwx,g=rx,o=rx
 
 Informational (block-scoped):
-  -c, --current-owner     Show current owner/group.
-  -a, --active-perms      Show current permissions.
+  -c, --current-owner     Show current owner/group (top-level only).
+  -a, --active-perms      Show current permissions (top-level only).
 
 Recursion (block-scoped):
   -R, --recursive         Apply changes recursively.
@@ -83,11 +95,17 @@ Global:
   --dry-run, -n           Preview without applying.
   --noconfirm             Skip recursive confirmation prompt.
   --force                 Alias for --noconfirm.
-  -v, --verbose           List changed directories (bounded).
-  --verbose-all           Print every changed item line (noisy).
+  -v, --verbose           Also list changed directories (bounded).
+                          (Implies --audit unless --fast.)
+  --verbose-all           Print every changed item line (very noisy).
+                          (Implies --audit unless --fast.)
   --max-verbose-dirs <N>  Limit directory list per target (default: 50).
-  --fast                  Faster: no accurate per-item change counts.
-  --next, --then          Start a new block.
+
+  --audit                 Enable per-item change counting using chown/chmod -c.
+                          WARNING: can be very slow on large recursive trees.
+
+  --fast                  Fast mode: skip per-item counting even if --audit.
+  --next, --then          Start a new block (targets+ops can differ per block).
   --auto-next             Start new block when new target appears after ops.
   --debug                 Print parse summary.
   --refresh, --refresh-rc  Source ~/.zshrc or ~/.bashrc in a subshell.
@@ -240,7 +258,7 @@ function extract_quoted_path() {
 function match_target_idx() {
   local path="$1"
   local arr_name="$2"
-  local -n _tgts_ref="$arr_name"  # critical: avoid naming this "tgts"
+  local -n _tgts_ref="$arr_name"
 
   local best=-1
   local best_len=0
@@ -289,6 +307,7 @@ function print_plan_header() {
   printf '  Dry-run:   %s\n' "$DRY_RUN"
   printf '  Fast:      %s\n' "$FAST"
   printf '  Verbose:   %s\n' "$VERBOSE"
+  printf '  Audit:     %s\n' "$AUDIT"
   printf '\n'
 }
 
@@ -312,10 +331,8 @@ function count_all_targets() {
 }
 
 function run_streamed_cmd() {
-  # Run a command whose stdout we want to parse, and ensure we fail if it fails.
-  #
   # Usage:
-  #   run_streamed_cmd VAR_FD VAR_PID -- command args...
+  #   run_streamed_cmd OUT_FD OUT_PID [ENV=VAL ...] cmd args...
   local -n _out_fd="$1"
   local -n _out_pid="$2"
   shift 2
@@ -323,6 +340,15 @@ function run_streamed_cmd() {
   coproc _CP { env "$@"; }
   _out_fd="${_CP[0]}"
   _out_pid="${_CP_PID}"
+
+  # Close write end (stdin) of coprocess in parent (defensive).
+  local wfd="${_CP[1]}"
+  eval "exec ${wfd}>&-"
+}
+
+function close_read_fd() {
+  local fd="$1"
+  eval "exec ${fd}<&-"
 }
 
 #------------------------------------------------------------------------------
@@ -356,6 +382,7 @@ while [[ $# -gt 0 ]]; do
       MAX_VERBOSE_DIRS="$2"
       shift 2
       ;;
+    --audit) AUDIT=true; shift ;;
     --fast) FAST=true; shift ;;
     --next|--then|--block)
       if block_has_targets "$CURRENT_BLOCK" || block_has_ops "$CURRENT_BLOCK"; then
@@ -415,6 +442,15 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Verbose implies audit (unless --fast).
+if ((VERBOSE >= 1)) && ! $FAST; then
+  AUDIT=true
+fi
+if $FAST && $AUDIT; then
+  warn "--fast disables per-item counting; ignoring --audit."
+  AUDIT=false
+fi
 
 # Compute perms per block
 for ((i=0; i<BLOCK_COUNT; i++)); do
@@ -518,8 +554,8 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
 
   declare -a chown_cnt chmod_cnt
   for i in "${!tgts[@]}"; do
-    chown_cnt[$i]=0
-    chmod_cnt[$i]=0
+    chown_cnt[$i]=-1
+    chmod_cnt[$i]=-1
   done
 
   declare -A chown_dirs=()
@@ -550,9 +586,13 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
       printf '[DRY RUN] chown %s %s -- (%d target(s))\n\n' \
         "${rec_opt[*]-}" "$chown_spec" "${#tgts[@]}"
     else
-      if $FAST; then
+      if ! $AUDIT; then
         LC_ALL=C chown "${rec_opt[@]}" -- "$chown_spec" "${tgts[@]}"
       else
+        for i in "${!tgts[@]}"; do
+          chown_cnt[$i]=0
+        done
+
         fd=""
         pid=""
         run_streamed_cmd fd pid LC_ALL=C chown -c "${rec_opt[@]}" \
@@ -573,9 +613,11 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
             printf '%s\n' "$line"
           fi
         done
+
+        close_read_fd "$fd"
         wait "$pid"
-				rc=$?
-				((rc == 0)) || die "chown failed (exit $rc)"
+        rc="$?"
+        ((rc == 0)) || die "chown failed (exit $rc)"
       fi
     fi
   fi
@@ -591,12 +633,15 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
       printf '[DRY RUN] chmod %s %s -- (%d target(s))\n\n' \
         "${rec_opt[*]-}" "$perm_oct" "${#tgts[@]}"
     else
-      if $FAST; then
+      if ! $AUDIT; then
         LC_ALL=C chmod "${rec_opt[@]}" -- "$perm_oct" "${tgts[@]}"
       else
+        for i in "${!tgts[@]}"; do
+          chmod_cnt[$i]=0
+        done
+
         fd=""
         pid=""
-        # critical: only ONE '--' here; second '--' was your bug
         run_streamed_cmd fd pid LC_ALL=C chmod -c "${rec_opt[@]}" \
           -- "$perm_oct" "${tgts[@]}"
 
@@ -616,9 +661,10 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
           fi
         done
 
+        close_read_fd "$fd"
         wait "$pid"
-				rc=$?
-				((rc == 0)) || die "chmod failed (exit $rc)"
+        rc="$?"
+        ((rc == 0)) || die "chmod failed (exit $rc)"
       fi
     fi
   fi
@@ -635,14 +681,15 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
     t="${tgts[$i]}"
     printf -- '-- %s\n' "$t"
 
+    # Ownership
     if $do_chown; then
       if $DRY_RUN; then
         summarize_target_line "Ownership" \
           "planned -> ${chown_spec} (top: ${pre_u[$i]}:${pre_g[$i]})"
       else
-        if $FAST; then
+        if ! $AUDIT; then
           summarize_target_line "Ownership" \
-            "${pre_u[$i]}:${pre_g[$i]} -> ${post_u[$i]}:${post_g[$i]} (children: --fast)"
+            "${pre_u[$i]}:${pre_g[$i]} -> ${post_u[$i]}:${post_g[$i]} (children: not audited)"
         else
           summarize_target_line "Ownership" \
             "${pre_u[$i]}:${pre_g[$i]} -> ${post_u[$i]}:${post_g[$i]} (changed: ${chown_cnt[$i]})"
@@ -652,14 +699,15 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
       summarize_target_line "Ownership" "not requested"
     fi
 
+    # Perms
     if $do_chmod; then
       if $DRY_RUN; then
         summarize_target_line "Perms" \
           "planned -> ${perm_raw} (= ${perm_oct}) (top: ${pre_p[$i]})"
       else
-        if $FAST; then
+        if ! $AUDIT; then
           summarize_target_line "Perms" \
-            "${pre_p[$i]} -> ${post_p[$i]} (children: --fast)"
+            "${pre_p[$i]} -> ${post_p[$i]} (children: not audited)"
         else
           summarize_target_line "Perms" \
             "${pre_p[$i]} -> ${post_p[$i]} (changed: ${chmod_cnt[$i]})"
@@ -669,6 +717,7 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
       summarize_target_line "Perms" "not requested"
     fi
 
+    # Changed vs unchanged (top-level only unless audited)
     did_change=false
     if $DRY_RUN; then
       did_change=true
@@ -676,13 +725,13 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
       if $do_chown; then
         [[ "${pre_u[$i]}" != "${post_u[$i]}" ]] && did_change=true
         [[ "${pre_g[$i]}" != "${post_g[$i]}" ]] && did_change=true
-        if ! $FAST && ((${chown_cnt[$i]} > 0)); then
+        if $AUDIT && ((${chown_cnt[$i]} > 0)); then
           did_change=true
         fi
       fi
       if $do_chmod; then
         [[ "${pre_p[$i]}" != "${post_p[$i]}" ]] && did_change=true
-        if ! $FAST && ((${chmod_cnt[$i]} > 0)); then
+        if $AUDIT && ((${chmod_cnt[$i]} > 0)); then
           did_change=true
         fi
       fi
@@ -694,7 +743,8 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
       unchanged_targets=$((unchanged_targets + 1))
     fi
 
-    if ((VERBOSE >= 1)) && ! $DRY_RUN && ! $FAST; then
+    # Optional verbose: changed directories (requires audit)
+    if ((VERBOSE >= 1)) && ! $DRY_RUN && $AUDIT; then
       count=0
       printed=false
       for k in "${!chown_dirs[@]}"; do
@@ -741,7 +791,7 @@ for ((b=0; b<BLOCK_COUNT; b++)); do
 done
 
 #------------------------------------------------------------------------------
-# Optional refresh-rc (subshell only; does not affect the current shell)
+# Optional refresh-rc (subshell only; does not affect current shell)
 #------------------------------------------------------------------------------
 if $REFRESH_RC; then
   if [[ -n "${SUDO_USER:-}" ]]; then
