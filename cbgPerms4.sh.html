@@ -1,0 +1,949 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+
+<head>
+	<title>/home/heini/my_repos/UserScripts/cbgPerms4.sh</title>
+	<meta http-equiv="content-type" content="text/html;charset=utf-8" />
+	<meta name="generator" content="Geany 2.1" />
+	<meta name="date" content="2026-02-27T11:06:57+0100" />
+	<style type="text/css">
+	body
+	{
+		font-family: Monospace, monospace;
+		font-size: 10pt;
+	}
+	.style_0
+	{
+		color: #ffffff;
+		background-color: #000000;
+	}
+	.style_2
+	{
+		color: #9933cc;
+		background-color: #000000;
+	}
+	.style_3
+	{
+		color: #ccff33;
+		background-color: #000000;
+	}
+	.style_4
+	{
+		color: #ff6600;
+		background-color: #000000;
+		font-weight: bold;
+	}
+	.style_5
+	{
+		color: #66ff00;
+		background-color: #000000;
+	}
+	.style_6
+	{
+		color: #66ff00;
+		background-color: #000000;
+	}
+	.style_7
+	{
+		color: #ffcc00;
+		background-color: #000000;
+	}
+	.style_8
+	{
+		color: #ffffff;
+		background-color: #000000;
+	}
+	.style_9
+	{
+		color: #ffffff;
+		background-color: #000000;
+	}
+	.style_10
+	{
+		color: #ffffff;
+		background-color: #000000;
+	}
+	.style_12
+	{
+		color: #66ff00;
+		background-color: #000000;
+	}
+	.style_13
+	{
+		color: #66ff00;
+		background-color: #000000;
+	}
+
+	</style>
+</head>
+
+<body>
+<p>
+<span class="style_2">#!/usr/bin/env&nbsp;bash</span><br />
+<span class="style_2">#===============================================================================</span><br />
+<span class="style_2">#&nbsp;chPerms&nbsp;-&nbsp;Change&nbsp;ownership,&nbsp;group,&nbsp;and/or&nbsp;permissions&nbsp;for&nbsp;one&nbsp;or&nbsp;more&nbsp;targets.</span><br />
+<span class="style_2">#</span><br />
+<span class="style_2">#&nbsp;Version:&nbsp;1.6.0</span><br />
+<span class="style_2">#&nbsp;License:&nbsp;MIT</span><br />
+<span class="style_2">#</span><br />
+<span class="style_2">#&nbsp;FIXES&nbsp;vs&nbsp;your&nbsp;current&nbsp;state:</span><br />
+<span class="style_2">#&nbsp;&nbsp;&nbsp;1)&nbsp;Stops&nbsp;“never&nbsp;ends”&nbsp;behavior&nbsp;by&nbsp;NOT&nbsp;defaulting&nbsp;to&nbsp;`chown/chmod&nbsp;-c&nbsp;-R`</span><br />
+<span class="style_2">#&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(which&nbsp;can&nbsp;emit&nbsp;*one&nbsp;line&nbsp;per&nbsp;changed&nbsp;file*&nbsp;and&nbsp;takes&nbsp;ages&nbsp;on&nbsp;big&nbsp;trees).</span><br />
+<span class="style_2">#&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Per-item&nbsp;counting&nbsp;is&nbsp;now&nbsp;OPT-IN&nbsp;via&nbsp;--audit&nbsp;(or&nbsp;auto-enabled&nbsp;by&nbsp;-v).</span><br />
+<span class="style_2">#&nbsp;&nbsp;&nbsp;2)&nbsp;Keeps&nbsp;strict&nbsp;mode&nbsp;+&nbsp;ERR&nbsp;trap&nbsp;without&nbsp;the&nbsp;earlier&nbsp;arithmetic&nbsp;pitfalls.</span><br />
+<span class="style_2">#&nbsp;&nbsp;&nbsp;3)&nbsp;Coprocess&nbsp;runner&nbsp;correctly&nbsp;supports&nbsp;ENV=VAL&nbsp;prefixes&nbsp;(LC_ALL=C).</span><br />
+<span class="style_2">#===============================================================================</span><br />
+<br />
+<span class="style_4">set&nbsp;</span><span class="style_8">-Eeuo&nbsp;pipefail</span><br />
+<br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_2">#&nbsp;Globals</span><br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_8">VERSION</span><span class="style_7">=</span><span class="style_5">"1.6.0"</span><br />
+<br />
+<span class="style_8">DRY_RUN</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<span class="style_8">NOCONFIRM</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<span class="style_8">FORCE</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<span class="style_8">REFRESH_RC</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<br />
+<span class="style_8">VERBOSE</span><span class="style_7">=</span><span class="style_3">0</span><br />
+<span class="style_8">MAX_VERBOSE_DIRS</span><span class="style_7">=</span><span class="style_3">50</span><br />
+<br />
+<span class="style_8">FAST</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<span class="style_8">AUTO_NEXT</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<span class="style_8">DEBUG</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<br />
+<span class="style_2">#&nbsp;New:</span><br />
+<span class="style_2">#&nbsp;&nbsp;&nbsp;AUDIT=false&nbsp;&nbsp;-&gt;&nbsp;do&nbsp;not&nbsp;use&nbsp;chown/chmod&nbsp;-c&nbsp;(fast,&nbsp;no&nbsp;per-item&nbsp;counts)</span><br />
+<span class="style_2">#&nbsp;&nbsp;&nbsp;AUDIT=true&nbsp;&nbsp;&nbsp;-&gt;&nbsp;parse&nbsp;-c&nbsp;output&nbsp;(slow&nbsp;on&nbsp;large&nbsp;recursive&nbsp;trees)</span><br />
+<span class="style_8">AUDIT</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<br />
+<span class="style_8">ORIG_ARGS</span><span class="style_7">=(</span><span class="style_5">"$@"</span><span class="style_7">)</span><br />
+<br />
+<span class="style_8">BLOCK_COUNT</span><span class="style_7">=</span><span class="style_3">0</span><br />
+<span class="style_8">declare&nbsp;-a&nbsp;B_TGTS&nbsp;B_OWNER&nbsp;B_GROUP&nbsp;B_PERM_RAW&nbsp;B_PERM_OCT</span><br />
+<span class="style_8">declare&nbsp;-a&nbsp;B_RECURSIVE&nbsp;B_SHOW_OWNER&nbsp;B_SHOW_PERMS</span><br />
+<span class="style_8">CURRENT_BLOCK</span><span class="style_7">=-</span><span class="style_3">1</span><br />
+<br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_2">#&nbsp;Traps</span><br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_4">function&nbsp;</span><span class="style_8">on_err</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;ec</span><span class="style_7">=</span><span class="style_5">"$?"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;line</span><span class="style_7">=</span><span class="style_5">"${BASH_LINENO[0]:-?}"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;cmd</span><span class="style_7">=</span><span class="style_5">"${BASH_COMMAND:-?}"</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'Error:&nbsp;exit=%s&nbsp;line=%s&nbsp;cmd=%s\n'&nbsp;</span><span class="style_5">"$ec"&nbsp;"$line"&nbsp;"$cmd"&nbsp;</span><span class="style_7">&gt;&amp;</span><span class="style_3">2</span><br />
+&nbsp;&nbsp;<span class="style_4">exit&nbsp;</span><span class="style_5">"$ec"</span><br />
+<span class="style_7">}</span><br />
+<span class="style_8">trap&nbsp;on_err&nbsp;ERR</span><br />
+<br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_2">#&nbsp;Helpers</span><br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_4">function&nbsp;</span><span class="style_8">die</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'Error:&nbsp;%s\n'&nbsp;</span><span class="style_5">"$*"&nbsp;</span><span class="style_7">&gt;&amp;</span><span class="style_3">2</span><br />
+&nbsp;&nbsp;<span class="style_4">exit&nbsp;</span><span class="style_3">1</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">warn</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'Warning:&nbsp;%s\n'&nbsp;</span><span class="style_5">"$*"&nbsp;</span><span class="style_7">&gt;&amp;</span><span class="style_3">2</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">show_help</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">cat&nbsp;</span><span class="style_12">&lt;&lt;'EOF'</span><br />
+<span class="style_13">Usage:</span><br />
+&nbsp;&nbsp;<span class="style_13">chPerms&nbsp;[PATH(S)...]&nbsp;[OPTIONS]...</span><br />
+&nbsp;&nbsp;<span class="style_13">chPerms&nbsp;-t&nbsp;&lt;LIST&gt;&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONS]...</span><br />
+<br />
+<span class="style_13">Targets:</span><br />
+&nbsp;&nbsp;<span class="style_13">PATH(S)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Space-separated&nbsp;paths.</span><br />
+&nbsp;&nbsp;<span class="style_13">-t,&nbsp;--target&nbsp;&lt;LIST&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Comma-separated&nbsp;list&nbsp;of&nbsp;paths.</span><br />
+<br />
+<span class="style_13">Operations&nbsp;(block-scoped):</span><br />
+&nbsp;&nbsp;<span class="style_13">-o,&nbsp;--owner&nbsp;&lt;USER&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Change&nbsp;owner&nbsp;to&nbsp;&lt;USER&gt;&nbsp;(or&nbsp;user:group).</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_13">"activeuser"&nbsp;uses&nbsp;$SUDO_USER&nbsp;if&nbsp;set,&nbsp;else&nbsp;id&nbsp;-un.</span><br />
+&nbsp;&nbsp;<span class="style_13">-g,&nbsp;--group&nbsp;&lt;GROUP&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Change&nbsp;group&nbsp;to&nbsp;&lt;GROUP&gt;.</span><br />
+&nbsp;&nbsp;<span class="style_13">-p,&nbsp;--perm&nbsp;&lt;PERMS&gt;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;755&nbsp;|&nbsp;rwxr-xr-x&nbsp;|&nbsp;u=rwx,g=rx,o=rx</span><br />
+<br />
+<span class="style_13">Informational&nbsp;(block-scoped):</span><br />
+&nbsp;&nbsp;<span class="style_13">-c,&nbsp;--current-owner&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Show&nbsp;current&nbsp;owner/group&nbsp;(top-level&nbsp;only).</span><br />
+&nbsp;&nbsp;<span class="style_13">-a,&nbsp;--active-perms&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Show&nbsp;current&nbsp;permissions&nbsp;(top-level&nbsp;only).</span><br />
+<br />
+<span class="style_13">Recursion&nbsp;(block-scoped):</span><br />
+&nbsp;&nbsp;<span class="style_13">-R,&nbsp;--recursive&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Apply&nbsp;changes&nbsp;recursively.</span><br />
+<br />
+<span class="style_13">Global:</span><br />
+&nbsp;&nbsp;<span class="style_13">--dry-run,&nbsp;-n&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Preview&nbsp;without&nbsp;applying.</span><br />
+&nbsp;&nbsp;<span class="style_13">--noconfirm&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Skip&nbsp;recursive&nbsp;confirmation&nbsp;prompt.</span><br />
+&nbsp;&nbsp;<span class="style_13">--force&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Alias&nbsp;for&nbsp;--noconfirm.</span><br />
+&nbsp;&nbsp;<span class="style_13">-v,&nbsp;--verbose&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Also&nbsp;list&nbsp;changed&nbsp;directories&nbsp;(bounded).</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_13">(Implies&nbsp;--audit&nbsp;unless&nbsp;--fast.)</span><br />
+&nbsp;&nbsp;<span class="style_13">--verbose-all&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Print&nbsp;every&nbsp;changed&nbsp;item&nbsp;line&nbsp;(very&nbsp;noisy).</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_13">(Implies&nbsp;--audit&nbsp;unless&nbsp;--fast.)</span><br />
+&nbsp;&nbsp;<span class="style_13">--max-verbose-dirs&nbsp;&lt;N&gt;&nbsp;&nbsp;Limit&nbsp;directory&nbsp;list&nbsp;per&nbsp;target&nbsp;(default:&nbsp;50).</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_13">--audit&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Enable&nbsp;per-item&nbsp;change&nbsp;counting&nbsp;using&nbsp;chown/chmod&nbsp;-c.</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_13">WARNING:&nbsp;can&nbsp;be&nbsp;very&nbsp;slow&nbsp;on&nbsp;large&nbsp;recursive&nbsp;trees.</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_13">--fast&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Fast&nbsp;mode:&nbsp;skip&nbsp;per-item&nbsp;counting&nbsp;even&nbsp;if&nbsp;--audit.</span><br />
+&nbsp;&nbsp;<span class="style_13">--next,&nbsp;--then&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Start&nbsp;a&nbsp;new&nbsp;block&nbsp;(targets+ops&nbsp;can&nbsp;differ&nbsp;per&nbsp;block).</span><br />
+&nbsp;&nbsp;<span class="style_13">--auto-next&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Start&nbsp;new&nbsp;block&nbsp;when&nbsp;new&nbsp;target&nbsp;appears&nbsp;after&nbsp;ops.</span><br />
+&nbsp;&nbsp;<span class="style_13">--debug&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Print&nbsp;parse&nbsp;summary.</span><br />
+&nbsp;&nbsp;<span class="style_13">--refresh,&nbsp;--refresh-rc&nbsp;&nbsp;Source&nbsp;~/.zshrc&nbsp;or&nbsp;~/.bashrc&nbsp;in&nbsp;a&nbsp;subshell.</span><br />
+&nbsp;&nbsp;<span class="style_13">--version&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Print&nbsp;version.</span><br />
+&nbsp;&nbsp;<span class="style_13">--help&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Show&nbsp;help.</span><br />
+<span class="style_12">EOF</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">new_block</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">CURRENT_BLOCK</span><span class="style_7">=</span><span class="style_5">"$BLOCK_COUNT"</span><br />
+&nbsp;&nbsp;<span class="style_8">B_TGTS</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;<span class="style_8">B_OWNER</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;<span class="style_8">B_GROUP</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;<span class="style_8">B_PERM_RAW</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;<span class="style_8">B_PERM_OCT</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;<span class="style_8">B_RECURSIVE</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">"false"</span><br />
+&nbsp;&nbsp;<span class="style_8">B_SHOW_OWNER</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">"false"</span><br />
+&nbsp;&nbsp;<span class="style_8">B_SHOW_PERMS</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">"false"</span><br />
+&nbsp;&nbsp;<span class="style_8">BLOCK_COUNT</span><span class="style_7">=$((</span><span class="style_8">BLOCK_COUNT&nbsp;</span><span class="style_7">+&nbsp;</span><span class="style_3">1</span><span class="style_7">))</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">block_has_targets</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;idx</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${B_TGTS[$idx]-}"&nbsp;</span><span class="style_7">]]</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">block_has_ops</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;idx</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${B_OWNER[$idx]-}"&nbsp;</span><span class="style_7">]]&nbsp;\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">||&nbsp;[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${B_GROUP[$idx]-}"&nbsp;</span><span class="style_7">]]&nbsp;\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">||&nbsp;[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${B_PERM_RAW[$idx]-}"&nbsp;</span><span class="style_7">]]&nbsp;\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">||&nbsp;[[&nbsp;</span><span class="style_5">"${B_RECURSIVE[$idx]-false}"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"true"&nbsp;</span><span class="style_7">]]&nbsp;\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">||&nbsp;[[&nbsp;</span><span class="style_5">"${B_SHOW_OWNER[$idx]-false}"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"true"&nbsp;</span><span class="style_7">]]&nbsp;\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">||&nbsp;[[&nbsp;</span><span class="style_5">"${B_SHOW_PERMS[$idx]-false}"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"true"&nbsp;</span><span class="style_7">]]</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">add_targets_csv</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;idx</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;csv</span><span class="style_7">=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;IFS</span><span class="style_7">=</span><span class="style_6">','</span><br />
+&nbsp;&nbsp;<span class="style_8">read&nbsp;-ra&nbsp;_tmp&nbsp;</span><span class="style_12">&lt;&lt;&lt;&nbsp;</span><span class="style_5">"$csv"</span><br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">t&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${_tmp[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$t"&nbsp;</span><span class="style_7">]]&nbsp;||&nbsp;</span><span class="style_4">continue</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">B_TGTS</span><span class="style_7">[</span><span class="style_9">$idx</span><span class="style_7">]+=</span><span class="style_5">$'\n'"$t"</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">add_target_one</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;idx</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;t</span><span class="style_7">=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$t"&nbsp;</span><span class="style_7">]]&nbsp;||&nbsp;</span><span class="style_4">return&nbsp;</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_8">B_TGTS</span><span class="style_7">[</span><span class="style_9">$idx</span><span class="style_7">]+=</span><span class="style_5">$'\n'"$t"</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">confirm_recursive_once</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;any_recursive</span><span class="style_7">=</span><span class="style_8">false</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;i</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_7">((</span><span class="style_8">i</span><span class="style_7">=</span><span class="style_3">0</span><span class="style_7">;&nbsp;</span><span class="style_8">i</span><span class="style_7">&lt;</span><span class="style_8">BLOCK_COUNT</span><span class="style_7">;&nbsp;</span><span class="style_8">i</span><span class="style_7">++));&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"${B_RECURSIVE[$i]-false}"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"true"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">any_recursive</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">break</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">!&nbsp;</span><span class="style_9">$any_recursive</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">return&nbsp;</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$NOCONFIRM&nbsp;</span><span class="style_7">||&nbsp;</span><span class="style_9">$FORCE</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">return&nbsp;</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s\n'&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"You&nbsp;requested&nbsp;a&nbsp;recursive&nbsp;operation&nbsp;(-R).&nbsp;This&nbsp;may&nbsp;affect&nbsp;many&nbsp;files&nbsp;and"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"can&nbsp;break&nbsp;your&nbsp;system&nbsp;if&nbsp;used&nbsp;incorrectly."</span><br />
+&nbsp;&nbsp;<span class="style_8">read&nbsp;-r&nbsp;-p&nbsp;</span><span class="style_5">"Continue?&nbsp;[y/N]:&nbsp;"&nbsp;</span><span class="style_8">response</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;!&nbsp;</span><span class="style_5">"$response"&nbsp;</span><span class="style_7">=~&nbsp;^[</span><span class="style_8">Yy</span><span class="style_7">]</span><span class="style_0">$&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s\n'&nbsp;</span><span class="style_5">"Recursive&nbsp;operation&nbsp;cancelled."</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">exit&nbsp;</span><span class="style_3">1</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">stat_owner_group_perm</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;path</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;-n&nbsp;out_owner</span><span class="style_7">=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;-n&nbsp;out_group</span><span class="style_7">=</span><span class="style_5">"$3"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;-n&nbsp;out_perm</span><span class="style_7">=</span><span class="style_5">"$4"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">out_owner</span><span class="style_7">=</span><span class="style_5">"$(stat&nbsp;-c&nbsp;%U&nbsp;--&nbsp;"$path"&nbsp;2&gt;/dev/null&nbsp;||&nbsp;true)"</span><br />
+&nbsp;&nbsp;<span class="style_8">out_group</span><span class="style_7">=</span><span class="style_5">"$(stat&nbsp;-c&nbsp;%G&nbsp;--&nbsp;"$path"&nbsp;2&gt;/dev/null&nbsp;||&nbsp;true)"</span><br />
+&nbsp;&nbsp;<span class="style_8">out_perm</span><span class="style_7">=</span><span class="style_5">"$(stat&nbsp;-c&nbsp;%a&nbsp;--&nbsp;"$path"&nbsp;2&gt;/dev/null&nbsp;||&nbsp;true)"</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">triad_to_digit</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;tri</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;-i&nbsp;v</span><span class="style_7">=</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_5">"$tri"&nbsp;</span><span class="style_7">==&nbsp;*</span><span class="style_8">r</span><span class="style_7">*&nbsp;]]&nbsp;&amp;&amp;&nbsp;((</span><span class="style_8">v</span><span class="style_7">+=</span><span class="style_3">4</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_5">"$tri"&nbsp;</span><span class="style_7">==&nbsp;*</span><span class="style_8">w</span><span class="style_7">*&nbsp;]]&nbsp;&amp;&amp;&nbsp;((</span><span class="style_8">v</span><span class="style_7">+=</span><span class="style_3">2</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_5">"$tri"&nbsp;</span><span class="style_7">==&nbsp;*</span><span class="style_8">x</span><span class="style_7">*&nbsp;]]&nbsp;&amp;&amp;&nbsp;((</span><span class="style_8">v</span><span class="style_7">+=</span><span class="style_3">1</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%d'&nbsp;</span><span class="style_5">"$v"</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">perm_to_octal</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;p</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$p"&nbsp;</span><span class="style_7">=~&nbsp;^[</span><span class="style_8">0-7</span><span class="style_7">]{</span><span class="style_3">3</span><span class="style_7">}</span><span class="style_0">$&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s'&nbsp;</span><span class="style_5">"$p"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">return&nbsp;</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$p"&nbsp;</span><span class="style_7">=~&nbsp;^[</span><span class="style_8">rwx-</span><span class="style_7">]{</span><span class="style_3">9</span><span class="style_7">}</span><span class="style_0">$&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">local&nbsp;u&nbsp;g&nbsp;o</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">u</span><span class="style_7">=</span><span class="style_5">"$(triad_to_digit&nbsp;"${p:0:3}")"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">g</span><span class="style_7">=</span><span class="style_5">"$(triad_to_digit&nbsp;"${p:3:3}")"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">o</span><span class="style_7">=</span><span class="style_5">"$(triad_to_digit&nbsp;"${p:6:3}")"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s%s%s'&nbsp;</span><span class="style_5">"$u"&nbsp;"$g"&nbsp;"$o"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">return&nbsp;</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$p"&nbsp;</span><span class="style_7">=~&nbsp;^</span><span class="style_8">u</span><span class="style_7">=([</span><span class="style_8">rwx-</span><span class="style_7">]{</span><span class="style_3">1</span><span class="style_7">,</span><span class="style_3">3</span><span class="style_7">}),</span><span class="style_8">g</span><span class="style_7">=([</span><span class="style_8">rwx-</span><span class="style_7">]{</span><span class="style_3">1</span><span class="style_7">,</span><span class="style_3">3</span><span class="style_7">}),</span><span class="style_8">o</span><span class="style_7">=([</span><span class="style_8">rwx-</span><span class="style_7">]{</span><span class="style_3">1</span><span class="style_7">,</span><span class="style_3">3</span><span class="style_7">})</span><span class="style_0">$&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">local&nbsp;u&nbsp;g&nbsp;o</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">u</span><span class="style_7">=</span><span class="style_5">"$(triad_to_digit&nbsp;"${BASH_REMATCH[1]}")"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">g</span><span class="style_7">=</span><span class="style_5">"$(triad_to_digit&nbsp;"${BASH_REMATCH[2]}")"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">o</span><span class="style_7">=</span><span class="style_5">"$(triad_to_digit&nbsp;"${BASH_REMATCH[3]}")"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s%s%s'&nbsp;</span><span class="style_5">"$u"&nbsp;"$g"&nbsp;"$o"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">return&nbsp;</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">die&nbsp;</span><span class="style_5">"Invalid&nbsp;permissions&nbsp;format:&nbsp;'$p'"</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">canon_path</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;p</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_8">command&nbsp;-v&nbsp;realpath&nbsp;</span><span class="style_7">&gt;/</span><span class="style_8">dev</span><span class="style_7">/</span><span class="style_8">null&nbsp;</span><span class="style_3">2</span><span class="style_7">&gt;&amp;</span><span class="style_3">1</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">realpath&nbsp;-m&nbsp;--&nbsp;</span><span class="style_5">"$p"</span><br />
+&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s'&nbsp;</span><span class="style_5">"$p"</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">extract_quoted_path</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;line</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$line"&nbsp;</span><span class="style_7">=~&nbsp;</span><span class="style_8">\'</span><span class="style_7">([^</span><span class="style_8">\'</span><span class="style_7">]+)</span><span class="style_8">\'&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s'&nbsp;</span><span class="style_5">"${BASH_REMATCH[1]}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">return&nbsp;</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_4">return&nbsp;</span><span class="style_3">1</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">match_target_idx</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;path</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;arr_name</span><span class="style_7">=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;-n&nbsp;_tgts_ref</span><span class="style_7">=</span><span class="style_5">"$arr_name"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;best</span><span class="style_7">=-</span><span class="style_3">1</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;best_len</span><span class="style_7">=</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;i&nbsp;t</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">i&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${!_tgts_ref[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">t</span><span class="style_7">=</span><span class="style_5">"${_tgts_ref[$i]}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$path"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"$t"&nbsp;</span><span class="style_7">||&nbsp;</span><span class="style_5">"$path"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"$t/"</span><span class="style_7">*&nbsp;]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((&nbsp;</span><span class="style_10">${#t}&nbsp;</span><span class="style_7">&gt;&nbsp;</span><span class="style_8">best_len&nbsp;</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">best</span><span class="style_7">=</span><span class="style_5">"$i"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">best_len</span><span class="style_7">=</span><span class="style_5">"${#t}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%d'&nbsp;</span><span class="style_5">"$best"</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">dir_of_path</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;p</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-d&nbsp;</span><span class="style_5">"$p"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s'&nbsp;</span><span class="style_5">"$p"</span><br />
+&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">dirname&nbsp;--&nbsp;</span><span class="style_5">"$p"</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">print_plan_header</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;idx</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;owner</span><span class="style_7">=</span><span class="style_5">"${B_OWNER[$idx]-}"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;group</span><span class="style_7">=</span><span class="style_5">"${B_GROUP[$idx]-}"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;perm_raw</span><span class="style_7">=</span><span class="style_5">"${B_PERM_RAW[$idx]-}"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;perm_oct</span><span class="style_7">=</span><span class="style_5">"${B_PERM_OCT[$idx]-}"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;rec</span><span class="style_7">=</span><span class="style_5">"${B_RECURSIVE[$idx]-false}"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'===&nbsp;Block&nbsp;%d&nbsp;===\n'&nbsp;</span><span class="style_5">"$((idx+1))"</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'Plan:\n'</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Recursive:&nbsp;%s\n'&nbsp;</span><span class="style_5">"$rec"</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Owner:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;%s\n'&nbsp;</span><span class="style_5">"${owner:-"(none)"}"</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Group:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;%s\n'&nbsp;</span><span class="style_5">"${group:-"(none)"}"</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$perm_raw"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Perms:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;%s&nbsp;(=&nbsp;%s)\n'&nbsp;</span><span class="style_5">"$perm_raw"&nbsp;"$perm_oct"</span><br />
+&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Perms:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(none)\n'</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Dry-run:&nbsp;&nbsp;&nbsp;%s\n'&nbsp;</span><span class="style_5">"$DRY_RUN"</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Fast:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;%s\n'&nbsp;</span><span class="style_5">"$FAST"</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Verbose:&nbsp;&nbsp;&nbsp;%s\n'&nbsp;</span><span class="style_5">"$VERBOSE"</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Audit:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;%s\n'&nbsp;</span><span class="style_5">"$AUDIT"</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'\n'</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">summarize_target_line</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;label</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;detail</span><span class="style_7">=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;%-10s&nbsp;%s\n'&nbsp;</span><span class="style_5">"$label:"&nbsp;"$detail"</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">count_all_targets</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;total</span><span class="style_7">=</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;b&nbsp;s&nbsp;n</span><br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_7">((</span><span class="style_8">b</span><span class="style_7">=</span><span class="style_3">0</span><span class="style_7">;&nbsp;</span><span class="style_8">b</span><span class="style_7">&lt;</span><span class="style_8">BLOCK_COUNT</span><span class="style_7">;&nbsp;</span><span class="style_8">b</span><span class="style_7">++));&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">s</span><span class="style_7">=</span><span class="style_5">"${B_TGTS[$b]-}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$s"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">n</span><span class="style_7">=</span><span class="style_5">"$(printf&nbsp;'%s\n'&nbsp;"$s"&nbsp;|&nbsp;sed&nbsp;'/^$/d'&nbsp;|&nbsp;wc&nbsp;-l&nbsp;|&nbsp;tr&nbsp;-d&nbsp;'&nbsp;')"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">total</span><span class="style_7">=$((</span><span class="style_8">total&nbsp;</span><span class="style_7">+&nbsp;</span><span class="style_8">n</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%d'&nbsp;</span><span class="style_5">"$total"</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">run_streamed_cmd</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_2">#&nbsp;Usage:</span><br />
+&nbsp;&nbsp;<span class="style_2">#&nbsp;&nbsp;&nbsp;run_streamed_cmd&nbsp;OUT_FD&nbsp;OUT_PID&nbsp;[ENV=VAL&nbsp;...]&nbsp;cmd&nbsp;args...</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;-n&nbsp;_out_fd</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;-n&nbsp;_out_pid</span><span class="style_7">=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><span class="style_3">2</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">coproc&nbsp;_CP&nbsp;</span><span class="style_7">{&nbsp;</span><span class="style_8">env&nbsp;</span><span class="style_5">"$@"</span><span class="style_7">;&nbsp;}</span><br />
+&nbsp;&nbsp;<span class="style_8">_out_fd</span><span class="style_7">=</span><span class="style_5">"${_CP[0]}"</span><br />
+&nbsp;&nbsp;<span class="style_8">_out_pid</span><span class="style_7">=</span><span class="style_5">"${_CP_PID}"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_2">#&nbsp;Close&nbsp;write&nbsp;end&nbsp;(stdin)&nbsp;of&nbsp;coprocess&nbsp;in&nbsp;parent&nbsp;(defensive).</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;wfd</span><span class="style_7">=</span><span class="style_5">"${_CP[1]}"</span><br />
+&nbsp;&nbsp;<span class="style_4">eval&nbsp;</span><span class="style_5">"exec&nbsp;${wfd}&gt;&amp;-"</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_4">function&nbsp;</span><span class="style_8">close_read_fd</span><span class="style_7">()&nbsp;{</span><br />
+&nbsp;&nbsp;<span class="style_8">local&nbsp;fd</span><span class="style_7">=</span><span class="style_5">"$1"</span><br />
+&nbsp;&nbsp;<span class="style_4">eval&nbsp;</span><span class="style_5">"exec&nbsp;${fd}&lt;&amp;-"</span><br />
+<span class="style_7">}</span><br />
+<br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_2">#&nbsp;Argument&nbsp;parsing</span><br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_8">new_block</span><br />
+<span class="style_8">END_OF_OPTS</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<br />
+<span class="style_4">while&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_9">$#&nbsp;</span><span class="style_4">-gt&nbsp;</span><span class="style_3">0&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$END_OF_OPTS</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$AUTO_NEXT&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_8">block_has_targets&nbsp;</span><span class="style_5">"$CURRENT_BLOCK"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">&amp;&amp;&nbsp;</span><span class="style_8">block_has_ops&nbsp;</span><span class="style_5">"$CURRENT_BLOCK"</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">new_block</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">add_target_one&nbsp;</span><span class="style_5">"$CURRENT_BLOCK"&nbsp;"$1"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">continue</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">case&nbsp;</span><span class="style_5">"$1"&nbsp;</span><span class="style_4">in</span><br />
+&nbsp;&nbsp;<span class="style_8">--help</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">show_help</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">exit&nbsp;</span><span class="style_3">0&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--version</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'chPerms&nbsp;version&nbsp;%s\n'&nbsp;</span><span class="style_5">"$VERSION"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">exit&nbsp;</span><span class="style_3">0&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--debug</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">DEBUG</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--dry-run</span><span class="style_7">|</span><span class="style_8">-n</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">DRY_RUN</span><span class="style_7">=</span><span class="style_8">true&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--noconfirm</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">NOCONFIRM</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--force</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">FORCE</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">-v</span><span class="style_7">|</span><span class="style_8">--verbose</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">VERBOSE</span><span class="style_7">=</span><span class="style_3">1</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--verbose-all</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">VERBOSE</span><span class="style_7">=</span><span class="style_3">2</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--max-verbose-dirs</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${2:-}"&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_5">"$2"&nbsp;</span><span class="style_7">=~&nbsp;^[</span><span class="style_8">0-9</span><span class="style_7">]+</span><span class="style_0">$&nbsp;</span><span class="style_7">]]&nbsp;||&nbsp;</span><span class="style_8">die&nbsp;</span><span class="style_5">"Missing&nbsp;integer&nbsp;for&nbsp;$1"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">MAX_VERBOSE_DIRS</span><span class="style_7">=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><span class="style_3">2</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--audit</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">AUDIT</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--fast</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">FAST</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--next</span><span class="style_7">|</span><span class="style_8">--then</span><span class="style_7">|</span><span class="style_8">--block</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_8">block_has_targets&nbsp;</span><span class="style_5">"$CURRENT_BLOCK"&nbsp;</span><span class="style_7">||&nbsp;</span><span class="style_8">block_has_ops&nbsp;</span><span class="style_5">"$CURRENT_BLOCK"</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">new_block</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--auto-next</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">AUTO_NEXT</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--refresh</span><span class="style_7">|</span><span class="style_8">--refresh-rc</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">REFRESH_RC</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">-R</span><span class="style_7">|</span><span class="style_8">--recursive</span><span class="style_7">|</span><span class="style_8">--recursively-apply</span><span class="style_7">|</span><span class="style_8">--recurse-action</span><span class="style_7">|</span><span class="style_8">--force-recursively</span><span class="style_7">|\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">--recursively-force</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">B_RECURSIVE</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">"true"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$1"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"--force-recursively"&nbsp;</span><span class="style_7">||&nbsp;</span><span class="style_5">"$1"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"--recursively-force"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">FORCE</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">-c</span><span class="style_7">|</span><span class="style_8">--current-owner</span><span class="style_7">|</span><span class="style_8">currentowner</span><span class="style_7">|</span><span class="style_8">currentownership</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">B_SHOW_OWNER</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">"true"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">-a</span><span class="style_7">|</span><span class="style_8">--active-perms</span><span class="style_7">|</span><span class="style_8">--active-permissions</span><span class="style_7">|</span><span class="style_8">currentperms</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">B_SHOW_PERMS</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">"true"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">-o</span><span class="style_7">|</span><span class="style_8">--owner</span><span class="style_7">|</span><span class="style_8">ownership</span><span class="style_7">|</span><span class="style_8">owner</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${2:-}"&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_5">"${2:0:1}"&nbsp;</span><span class="style_7">!=&nbsp;</span><span class="style_5">"-"&nbsp;</span><span class="style_7">]]&nbsp;||&nbsp;</span><span class="style_8">die&nbsp;</span><span class="style_5">"Missing&nbsp;argument&nbsp;for&nbsp;$1"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">B_OWNER</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><span class="style_3">2</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">-g</span><span class="style_7">|</span><span class="style_8">--group</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${2:-}"&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_5">"${2:0:1}"&nbsp;</span><span class="style_7">!=&nbsp;</span><span class="style_5">"-"&nbsp;</span><span class="style_7">]]&nbsp;||&nbsp;</span><span class="style_8">die&nbsp;</span><span class="style_5">"Missing&nbsp;argument&nbsp;for&nbsp;$1"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">B_GROUP</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><span class="style_3">2</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">-p</span><span class="style_7">|</span><span class="style_8">--perm</span><span class="style_7">|</span><span class="style_8">--perms</span><span class="style_7">|</span><span class="style_8">--permission</span><span class="style_7">|</span><span class="style_8">permissions</span><span class="style_7">|</span><span class="style_8">perms</span><span class="style_7">|</span><span class="style_8">perm</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${2:-}"&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_5">"${2:0:1}"&nbsp;</span><span class="style_7">!=&nbsp;</span><span class="style_5">"-"&nbsp;</span><span class="style_7">]]&nbsp;||&nbsp;</span><span class="style_8">die&nbsp;</span><span class="style_5">"Missing&nbsp;argument&nbsp;for&nbsp;$1"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">B_PERM_RAW</span><span class="style_7">[</span><span class="style_9">$CURRENT_BLOCK</span><span class="style_7">]=</span><span class="style_5">"$2"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><span class="style_3">2</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">-t</span><span class="style_7">|</span><span class="style_8">--target</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${2:-}"&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_5">"${2:0:1}"&nbsp;</span><span class="style_7">!=&nbsp;</span><span class="style_5">"-"&nbsp;</span><span class="style_7">]]&nbsp;||&nbsp;</span><span class="style_8">die&nbsp;</span><span class="style_5">"Missing&nbsp;argument&nbsp;for&nbsp;$1"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">add_targets_csv&nbsp;</span><span class="style_5">"$CURRENT_BLOCK"&nbsp;"$2"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><span class="style_3">2</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">--</span><span class="style_7">)&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">END_OF_OPTS</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift&nbsp;</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_8">-</span><span class="style_7">*)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">die&nbsp;</span><span class="style_5">"Unknown&nbsp;option:&nbsp;'$1'"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_7">*)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$AUTO_NEXT&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_8">block_has_targets&nbsp;</span><span class="style_5">"$CURRENT_BLOCK"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">&amp;&amp;&nbsp;</span><span class="style_8">block_has_ops&nbsp;</span><span class="style_5">"$CURRENT_BLOCK"</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">new_block</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">add_target_one&nbsp;</span><span class="style_5">"$CURRENT_BLOCK"&nbsp;"$1"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">shift</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">;;</span><br />
+&nbsp;&nbsp;<span class="style_4">esac</span><br />
+<span class="style_4">done</span><br />
+<br />
+<span class="style_2">#&nbsp;Verbose&nbsp;implies&nbsp;audit&nbsp;(unless&nbsp;--fast).</span><br />
+<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">VERBOSE&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_3">1</span><span class="style_7">))&nbsp;&amp;&amp;&nbsp;!&nbsp;</span><span class="style_9">$FAST</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;<span class="style_8">AUDIT</span><span class="style_7">=</span><span class="style_8">true</span><br />
+<span class="style_4">fi</span><br />
+<span class="style_4">if&nbsp;</span><span class="style_9">$FAST&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_9">$AUDIT</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;<span class="style_8">warn&nbsp;</span><span class="style_5">"--fast&nbsp;disables&nbsp;per-item&nbsp;counting;&nbsp;ignoring&nbsp;--audit."</span><br />
+&nbsp;&nbsp;<span class="style_8">AUDIT</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<span class="style_4">fi</span><br />
+<br />
+<span class="style_2">#&nbsp;Compute&nbsp;perms&nbsp;per&nbsp;block</span><br />
+<span class="style_4">for&nbsp;</span><span class="style_7">((</span><span class="style_8">i</span><span class="style_7">=</span><span class="style_3">0</span><span class="style_7">;&nbsp;</span><span class="style_8">i</span><span class="style_7">&lt;</span><span class="style_8">BLOCK_COUNT</span><span class="style_7">;&nbsp;</span><span class="style_8">i</span><span class="style_7">++));&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${B_PERM_RAW[$i]-}"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">B_PERM_OCT</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]=</span><span class="style_5">"$(perm_to_octal&nbsp;"${B_PERM_RAW[$i]}")"</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<span class="style_4">done</span><br />
+<br />
+<span class="style_8">TOTAL_TARGETS</span><span class="style_7">=</span><span class="style_5">"$(count_all_targets)"</span><br />
+<span class="style_7">((&nbsp;</span><span class="style_8">TOTAL_TARGETS&nbsp;</span><span class="style_7">&gt;&nbsp;</span><span class="style_3">0&nbsp;</span><span class="style_7">))&nbsp;||&nbsp;</span><span class="style_8">die&nbsp;</span><span class="style_5">"No&nbsp;targets&nbsp;parsed.&nbsp;Check&nbsp;-t/--target&nbsp;quoting."</span><br />
+<br />
+<span class="style_4">if&nbsp;</span><span class="style_9">$DEBUG</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'Debug:&nbsp;blocks=%d&nbsp;total_targets=%d\n'&nbsp;</span><span class="style_5">"$BLOCK_COUNT"&nbsp;"$TOTAL_TARGETS"</span><br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_7">((</span><span class="style_8">i</span><span class="style_7">=</span><span class="style_3">0</span><span class="style_7">;&nbsp;</span><span class="style_8">i</span><span class="style_7">&lt;</span><span class="style_8">BLOCK_COUNT</span><span class="style_7">;&nbsp;</span><span class="style_8">i</span><span class="style_7">++));&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">n</span><span class="style_7">=</span><span class="style_5">"$(printf&nbsp;'%s\n'&nbsp;"${B_TGTS[$i]-}"&nbsp;|&nbsp;sed&nbsp;'/^$/d'&nbsp;|&nbsp;wc&nbsp;-l&nbsp;|&nbsp;tr&nbsp;-d&nbsp;'&nbsp;')"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;block[%d]:&nbsp;targets=%s&nbsp;owner=%s&nbsp;group=%s&nbsp;perm=%s&nbsp;rec=%s\n'&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"$i"&nbsp;"$n"&nbsp;"${B_OWNER[$i]-}"&nbsp;"${B_GROUP[$i]-}"&nbsp;"${B_PERM_RAW[$i]-}"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"${B_RECURSIVE[$i]-false}"</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'\n'</span><br />
+<span class="style_4">fi</span><br />
+<br />
+<span class="style_2">#&nbsp;Sudo&nbsp;re-exec&nbsp;if&nbsp;needed</span><br />
+<span class="style_8">requires_sudo</span><span class="style_7">=</span><span class="style_8">false</span><br />
+<span class="style_4">for&nbsp;</span><span class="style_7">((</span><span class="style_8">i</span><span class="style_7">=</span><span class="style_3">0</span><span class="style_7">;&nbsp;</span><span class="style_8">i</span><span class="style_7">&lt;</span><span class="style_8">BLOCK_COUNT</span><span class="style_7">;&nbsp;</span><span class="style_8">i</span><span class="style_7">++));&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${B_OWNER[$i]-}"&nbsp;</span><span class="style_7">||&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${B_GROUP[$i]-}"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">requires_sudo</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">break</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<span class="style_4">done</span><br />
+<br />
+<span class="style_4">if&nbsp;</span><span class="style_9">$requires_sudo&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;[[&nbsp;</span><span class="style_9">$EUID&nbsp;</span><span class="style_4">-ne&nbsp;</span><span class="style_3">0&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s\n'&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"Some&nbsp;operations&nbsp;(owner/group&nbsp;changes)&nbsp;require&nbsp;elevated&nbsp;privileges."</span><br />
+&nbsp;&nbsp;<span class="style_8">read&nbsp;-r&nbsp;-p&nbsp;</span><span class="style_5">"Re-run&nbsp;with&nbsp;sudo&nbsp;now?&nbsp;[y/N]:&nbsp;"&nbsp;</span><span class="style_8">response</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$response"&nbsp;</span><span class="style_7">=~&nbsp;^[</span><span class="style_8">Yy</span><span class="style_7">]</span><span class="style_0">$&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">exec&nbsp;sudo&nbsp;-E&nbsp;--&nbsp;</span><span class="style_5">"$0"&nbsp;"${ORIG_ARGS[@]}"</span><br />
+&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">warn&nbsp;</span><span class="style_5">"Continuing&nbsp;without&nbsp;sudo;&nbsp;owner/group&nbsp;changes&nbsp;may&nbsp;fail."</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<span class="style_4">fi</span><br />
+<br />
+<span class="style_8">confirm_recursive_once</span><br />
+<br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_2">#&nbsp;Apply&nbsp;blocks</span><br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_4">for&nbsp;</span><span class="style_7">((</span><span class="style_8">b</span><span class="style_7">=</span><span class="style_3">0</span><span class="style_7">;&nbsp;</span><span class="style_8">b</span><span class="style_7">&lt;</span><span class="style_8">BLOCK_COUNT</span><span class="style_7">;&nbsp;</span><span class="style_8">b</span><span class="style_7">++));&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;<span class="style_8">mapfile&nbsp;-t&nbsp;_raw_targets&nbsp;</span><span class="style_7">&lt;&nbsp;&lt;(</span><span class="style_8">printf&nbsp;</span><span class="style_6">'%s\n'&nbsp;</span><span class="style_5">"${B_TGTS[$b]-}"&nbsp;</span><span class="style_7">|&nbsp;</span><span class="style_8">sed&nbsp;</span><span class="style_6">'/^$/d'</span><span class="style_7">)&nbsp;\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">((</span><span class="style_10">${#_raw_targets[@]}&nbsp;</span><span class="style_7">&gt;&nbsp;</span><span class="style_3">0</span><span class="style_7">))&nbsp;\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">||&nbsp;{&nbsp;</span><span class="style_8">warn&nbsp;</span><span class="style_5">"Block&nbsp;$((b+1))&nbsp;has&nbsp;no&nbsp;targets."</span><span class="style_7">;&nbsp;</span><span class="style_4">continue</span><span class="style_7">;&nbsp;}</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">declare&nbsp;-a&nbsp;tgts</span><span class="style_7">=()</span><br />
+&nbsp;&nbsp;<span class="style_8">declare&nbsp;-a&nbsp;missing</span><span class="style_7">=()</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">t&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${_raw_targets[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">tc</span><span class="style_7">=</span><span class="style_5">"$(canon_path&nbsp;"$t")"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-e&nbsp;</span><span class="style_5">"$tc"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">tgts</span><span class="style_7">+=(</span><span class="style_5">"$tc"</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">missing</span><span class="style_7">+=(</span><span class="style_5">"$t"</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">owner</span><span class="style_7">=</span><span class="style_5">"${B_OWNER[$b]-}"</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$owner"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"activeuser"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${SUDO_USER:-}"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">owner</span><span class="style_7">=</span><span class="style_5">"$SUDO_USER"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">owner</span><span class="style_7">=</span><span class="style_5">"$(id&nbsp;-un)"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">group</span><span class="style_7">=</span><span class="style_5">"${B_GROUP[$b]-}"</span><br />
+&nbsp;&nbsp;<span class="style_8">perm_raw</span><span class="style_7">=</span><span class="style_5">"${B_PERM_RAW[$b]-}"</span><br />
+&nbsp;&nbsp;<span class="style_8">perm_oct</span><span class="style_7">=</span><span class="style_5">"${B_PERM_OCT[$b]-}"</span><br />
+&nbsp;&nbsp;<span class="style_8">rec</span><span class="style_7">=</span><span class="style_5">"${B_RECURSIVE[$b]-false}"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$owner"&nbsp;</span><span class="style_7">=~&nbsp;^[^:]+:[^:]+</span><span class="style_0">$&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$group"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">die&nbsp;</span><span class="style_5">"Ambiguous:&nbsp;--owner&nbsp;'$owner'&nbsp;already&nbsp;sets&nbsp;group;&nbsp;remove&nbsp;--group."</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">B_OWNER</span><span class="style_7">[</span><span class="style_9">$b</span><span class="style_7">]=</span><span class="style_5">"$owner"</span><br />
+&nbsp;&nbsp;<span class="style_8">B_GROUP</span><span class="style_7">[</span><span class="style_9">$b</span><span class="style_7">]=</span><span class="style_5">"$group"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">print_plan_header&nbsp;</span><span class="style_5">"$b"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_10">${#missing[@]}&nbsp;</span><span class="style_7">&gt;&nbsp;</span><span class="style_3">0</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'Missing&nbsp;targets&nbsp;(skipped):\n'</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">m&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${missing[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;-&nbsp;%s\n'&nbsp;</span><span class="style_5">"$m"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">done</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'\n'</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_7">((</span><span class="style_10">${#tgts[@]}&nbsp;</span><span class="style_7">&gt;&nbsp;</span><span class="style_3">0</span><span class="style_7">))&nbsp;\</span><br />
+&nbsp;&nbsp;<span class="style_7">||&nbsp;{&nbsp;</span><span class="style_8">printf&nbsp;</span><span class="style_6">'No&nbsp;existing&nbsp;targets.&nbsp;Nothing&nbsp;to&nbsp;do.\n\n'</span><span class="style_7">;&nbsp;</span><span class="style_4">continue</span><span class="style_7">;&nbsp;}</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">declare&nbsp;-a&nbsp;pre_u&nbsp;pre_g&nbsp;pre_p&nbsp;post_u&nbsp;post_g&nbsp;post_p</span><br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">i&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${!tgts[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">stat_owner_group_perm&nbsp;</span><span class="style_5">"${tgts[$i]}"&nbsp;</span><span class="style_8">pre_u</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]&nbsp;</span><span class="style_8">pre_g</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]&nbsp;</span><span class="style_8">pre_p</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">declare&nbsp;-a&nbsp;chown_cnt&nbsp;chmod_cnt</span><br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">i&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${!tgts[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chown_cnt</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]=-</span><span class="style_3">1</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chmod_cnt</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]=-</span><span class="style_3">1</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">declare&nbsp;-A&nbsp;chown_dirs</span><span class="style_7">=()</span><br />
+&nbsp;&nbsp;<span class="style_8">declare&nbsp;-A&nbsp;chmod_dirs</span><span class="style_7">=()</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">rec_opt</span><span class="style_7">=()</span><br />
+&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_5">"$rec"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"true"&nbsp;</span><span class="style_7">]]&nbsp;&amp;&amp;&nbsp;</span><span class="style_8">rec_opt</span><span class="style_7">=(</span><span class="style_8">-R</span><span class="style_7">)</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_2">#---------------------------</span><br />
+&nbsp;&nbsp;<span class="style_2">#&nbsp;chown&nbsp;(once&nbsp;per&nbsp;block)</span><br />
+&nbsp;&nbsp;<span class="style_2">#---------------------------</span><br />
+&nbsp;&nbsp;<span class="style_8">do_chown</span><span class="style_7">=</span><span class="style_8">false</span><br />
+&nbsp;&nbsp;<span class="style_8">chown_spec</span><span class="style_7">=</span><span class="style_5">""</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$owner"&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$group"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">do_chown</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chown_spec</span><span class="style_7">=</span><span class="style_5">"${owner}:${group}"</span><br />
+&nbsp;&nbsp;<span class="style_4">elif&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$owner"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">do_chown</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chown_spec</span><span class="style_7">=</span><span class="style_5">"$owner"</span><br />
+&nbsp;&nbsp;<span class="style_4">elif&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$group"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">do_chown</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chown_spec</span><span class="style_7">=</span><span class="style_5">":${group}"</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$do_chown</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$DRY_RUN</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'[DRY&nbsp;RUN]&nbsp;chown&nbsp;%s&nbsp;%s&nbsp;--&nbsp;(%d&nbsp;target(s))\n\n'&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"${rec_opt[*]-}"&nbsp;"$chown_spec"&nbsp;"${#tgts[@]}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">!&nbsp;</span><span class="style_9">$AUDIT</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">LC_ALL</span><span class="style_7">=</span><span class="style_8">C&nbsp;chown&nbsp;</span><span class="style_5">"${rec_opt[@]}"&nbsp;</span><span class="style_8">--&nbsp;</span><span class="style_5">"$chown_spec"&nbsp;"${tgts[@]}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">i&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${!tgts[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chown_cnt</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]=</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">fd</span><span class="style_7">=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">pid</span><span class="style_7">=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">run_streamed_cmd&nbsp;fd&nbsp;pid&nbsp;LC_ALL</span><span class="style_7">=</span><span class="style_8">C&nbsp;chown&nbsp;-c&nbsp;</span><span class="style_5">"${rec_opt[@]}"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">--&nbsp;</span><span class="style_5">"$chown_spec"&nbsp;"${tgts[@]}"</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">while&nbsp;</span><span class="style_8">IFS</span><span class="style_7">=&nbsp;</span><span class="style_8">read&nbsp;-r&nbsp;line&nbsp;</span><span class="style_7">&lt;&amp;</span><span class="style_5">"$fd"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">p</span><span class="style_7">=</span><span class="style_5">"$(extract_quoted_path&nbsp;"$line"&nbsp;||&nbsp;true)"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$p"&nbsp;</span><span class="style_7">]]&nbsp;||&nbsp;</span><span class="style_4">continue</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">idx</span><span class="style_7">=</span><span class="style_5">"$(match_target_idx&nbsp;"$p"&nbsp;tgts)"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">idx&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_3">0</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chown_cnt</span><span class="style_7">[</span><span class="style_9">$idx</span><span class="style_7">]=$((</span><span class="style_8">chown_cnt</span><span class="style_7">[</span><span class="style_9">$idx</span><span class="style_7">]&nbsp;+&nbsp;</span><span class="style_3">1</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">VERBOSE&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_3">1</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">d</span><span class="style_7">=</span><span class="style_5">"$(dir_of_path&nbsp;"$p")"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chown_dirs</span><span class="style_7">[</span><span class="style_5">"$idx|$d"</span><span class="style_7">]=</span><span class="style_3">1</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">VERBOSE&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_3">2</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s\n'&nbsp;</span><span class="style_5">"$line"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">close_read_fd&nbsp;</span><span class="style_5">"$fd"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">wait&nbsp;</span><span class="style_5">"$pid"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">rc</span><span class="style_7">=</span><span class="style_5">"$?"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">((</span><span class="style_8">rc&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_3">0</span><span class="style_7">))&nbsp;||&nbsp;</span><span class="style_8">die&nbsp;</span><span class="style_5">"chown&nbsp;failed&nbsp;(exit&nbsp;$rc)"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_2">#-----------------------------------------------------------------------------</span><br />
+&nbsp;&nbsp;<span class="style_2">#&nbsp;chmod&nbsp;(once&nbsp;per&nbsp;block)</span><br />
+&nbsp;&nbsp;<span class="style_2">#-----------------------------------------------------------------------------</span><br />
+&nbsp;&nbsp;<span class="style_8">do_chmod</span><span class="style_7">=</span><span class="style_8">false</span><br />
+&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$perm_oct"&nbsp;</span><span class="style_7">]]&nbsp;&amp;&amp;&nbsp;</span><span class="style_8">do_chmod</span><span class="style_7">=</span><span class="style_8">true</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$do_chmod</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$DRY_RUN</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'[DRY&nbsp;RUN]&nbsp;chmod&nbsp;%s&nbsp;%s&nbsp;--&nbsp;(%d&nbsp;target(s))\n\n'&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"${rec_opt[*]-}"&nbsp;"$perm_oct"&nbsp;"${#tgts[@]}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">!&nbsp;</span><span class="style_9">$AUDIT</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">LC_ALL</span><span class="style_7">=</span><span class="style_8">C&nbsp;chmod&nbsp;</span><span class="style_5">"${rec_opt[@]}"&nbsp;</span><span class="style_8">--&nbsp;</span><span class="style_5">"$perm_oct"&nbsp;"${tgts[@]}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">i&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${!tgts[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chmod_cnt</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]=</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">fd</span><span class="style_7">=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">pid</span><span class="style_7">=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">run_streamed_cmd&nbsp;fd&nbsp;pid&nbsp;LC_ALL</span><span class="style_7">=</span><span class="style_8">C&nbsp;chmod&nbsp;-c&nbsp;</span><span class="style_5">"${rec_opt[@]}"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">--&nbsp;</span><span class="style_5">"$perm_oct"&nbsp;"${tgts[@]}"</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">while&nbsp;</span><span class="style_8">IFS</span><span class="style_7">=&nbsp;</span><span class="style_8">read&nbsp;-r&nbsp;line&nbsp;</span><span class="style_7">&lt;&amp;</span><span class="style_5">"$fd"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">p</span><span class="style_7">=</span><span class="style_5">"$(extract_quoted_path&nbsp;"$line"&nbsp;||&nbsp;true)"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"$p"&nbsp;</span><span class="style_7">]]&nbsp;||&nbsp;</span><span class="style_4">continue</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">idx</span><span class="style_7">=</span><span class="style_5">"$(match_target_idx&nbsp;"$p"&nbsp;tgts)"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">idx&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_3">0</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chmod_cnt</span><span class="style_7">[</span><span class="style_9">$idx</span><span class="style_7">]=$((</span><span class="style_8">chmod_cnt</span><span class="style_7">[</span><span class="style_9">$idx</span><span class="style_7">]&nbsp;+&nbsp;</span><span class="style_3">1</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">VERBOSE&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_3">1</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">d</span><span class="style_7">=</span><span class="style_5">"$(dir_of_path&nbsp;"$p")"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">chmod_dirs</span><span class="style_7">[</span><span class="style_5">"$idx|$d"</span><span class="style_7">]=</span><span class="style_3">1</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">VERBOSE&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_3">2</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'%s\n'&nbsp;</span><span class="style_5">"$line"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">close_read_fd&nbsp;</span><span class="style_5">"$fd"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">wait&nbsp;</span><span class="style_5">"$pid"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">rc</span><span class="style_7">=</span><span class="style_5">"$?"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">((</span><span class="style_8">rc&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_3">0</span><span class="style_7">))&nbsp;||&nbsp;</span><span class="style_8">die&nbsp;</span><span class="style_5">"chmod&nbsp;failed&nbsp;(exit&nbsp;$rc)"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">i&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${!tgts[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">stat_owner_group_perm&nbsp;</span><span class="style_5">"${tgts[$i]}"&nbsp;</span><span class="style_8">post_u</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]&nbsp;</span><span class="style_8">post_g</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]&nbsp;</span><span class="style_8">post_p</span><span class="style_7">[</span><span class="style_9">$i</span><span class="style_7">]</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'Results:\n'</span><br />
+&nbsp;&nbsp;<span class="style_8">changed_targets</span><span class="style_7">=</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;<span class="style_8">unchanged_targets</span><span class="style_7">=</span><span class="style_3">0</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">i&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${!tgts[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">t</span><span class="style_7">=</span><span class="style_5">"${tgts[$i]}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;--&nbsp;</span><span class="style_6">'--&nbsp;%s\n'&nbsp;</span><span class="style_5">"$t"</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_2">#&nbsp;Ownership</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$do_chown</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$DRY_RUN</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">summarize_target_line&nbsp;</span><span class="style_5">"Ownership"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"planned&nbsp;-&gt;&nbsp;${chown_spec}&nbsp;(top:&nbsp;${pre_u[$i]}:${pre_g[$i]})"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">!&nbsp;</span><span class="style_9">$AUDIT</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">summarize_target_line&nbsp;</span><span class="style_5">"Ownership"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"${pre_u[$i]}:${pre_g[$i]}&nbsp;-&gt;&nbsp;${post_u[$i]}:${post_g[$i]}&nbsp;\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">(children:&nbsp;not&nbsp;audited)"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">summarize_target_line&nbsp;</span><span class="style_5">"Ownership"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"${pre_u[$i]}:${pre_g[$i]}&nbsp;-&gt;&nbsp;${post_u[$i]}:${post_g[$i]}&nbsp;\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">(changed:&nbsp;${chown_cnt[$i]})"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">summarize_target_line&nbsp;</span><span class="style_5">"Ownership"&nbsp;"not&nbsp;requested"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_2">#&nbsp;Perms</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$do_chmod</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$DRY_RUN</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">summarize_target_line&nbsp;</span><span class="style_5">"Perms"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"planned&nbsp;-&gt;&nbsp;${perm_raw}&nbsp;(=&nbsp;${perm_oct})&nbsp;(top:&nbsp;${pre_p[$i]})"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">!&nbsp;</span><span class="style_9">$AUDIT</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">summarize_target_line&nbsp;</span><span class="style_5">"Perms"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"${pre_p[$i]}&nbsp;-&gt;&nbsp;${post_p[$i]}&nbsp;(children:&nbsp;not&nbsp;audited)"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">summarize_target_line&nbsp;</span><span class="style_5">"Perms"&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"${pre_p[$i]}&nbsp;-&gt;&nbsp;${post_p[$i]}&nbsp;(changed:&nbsp;${chmod_cnt[$i]})"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">summarize_target_line&nbsp;</span><span class="style_5">"Perms"&nbsp;"not&nbsp;requested"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_2">#&nbsp;Changed&nbsp;vs&nbsp;unchanged&nbsp;(top-level&nbsp;only&nbsp;unless&nbsp;audited)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">did_change</span><span class="style_7">=</span><span class="style_8">false</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$DRY_RUN</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">did_change</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$do_chown</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_5">"${pre_u[$i]}"&nbsp;</span><span class="style_7">!=&nbsp;</span><span class="style_5">"${post_u[$i]}"&nbsp;</span><span class="style_7">]]&nbsp;&amp;&amp;&nbsp;</span><span class="style_8">did_change</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_5">"${pre_g[$i]}"&nbsp;</span><span class="style_7">!=&nbsp;</span><span class="style_5">"${post_g[$i]}"&nbsp;</span><span class="style_7">]]&nbsp;&amp;&amp;&nbsp;</span><span class="style_8">did_change</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$AUDIT&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;((</span><span class="style_10">${chown_cnt[</span><span class="style_9">$i</span><span class="style_10">]}&nbsp;</span><span class="style_7">&gt;&nbsp;</span><span class="style_3">0</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">did_change</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$do_chmod</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_5">"${pre_p[$i]}"&nbsp;</span><span class="style_7">!=&nbsp;</span><span class="style_5">"${post_p[$i]}"&nbsp;</span><span class="style_7">]]&nbsp;&amp;&amp;&nbsp;</span><span class="style_8">did_change</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$AUDIT&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;((</span><span class="style_10">${chmod_cnt[</span><span class="style_9">$i</span><span class="style_10">]}&nbsp;</span><span class="style_7">&gt;&nbsp;</span><span class="style_3">0</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">did_change</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_9">$did_change</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">changed_targets</span><span class="style_7">=$((</span><span class="style_8">changed_targets&nbsp;</span><span class="style_7">+&nbsp;</span><span class="style_3">1</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">unchanged_targets</span><span class="style_7">=$((</span><span class="style_8">unchanged_targets&nbsp;</span><span class="style_7">+&nbsp;</span><span class="style_3">1</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_2">#&nbsp;Optional&nbsp;verbose:&nbsp;changed&nbsp;directories&nbsp;(requires&nbsp;audit)</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">VERBOSE&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_3">1</span><span class="style_7">))&nbsp;&amp;&amp;&nbsp;!&nbsp;</span><span class="style_9">$DRY_RUN&nbsp;</span><span class="style_7">&amp;&amp;&nbsp;</span><span class="style_9">$AUDIT</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">count</span><span class="style_7">=</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printed</span><span class="style_7">=</span><span class="style_8">false</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">k&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${!chown_dirs[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_5">"$k"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"$i|"</span><span class="style_7">*&nbsp;]]&nbsp;||&nbsp;</span><span class="style_4">continue</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">d</span><span class="style_7">=</span><span class="style_5">"${k#*$i|}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">!&nbsp;</span><span class="style_9">$printed</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Changed&nbsp;dirs&nbsp;(ownership):\n'</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printed</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;&nbsp;&nbsp;-&nbsp;%s\n'&nbsp;</span><span class="style_5">"$d"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">count</span><span class="style_7">=$((</span><span class="style_8">count&nbsp;</span><span class="style_7">+&nbsp;</span><span class="style_3">1</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">count&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_8">MAX_VERBOSE_DIRS</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;&nbsp;&nbsp;-&nbsp;(truncated&nbsp;at&nbsp;%d)\n'&nbsp;</span><span class="style_5">"$MAX_VERBOSE_DIRS"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">break</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">count</span><span class="style_7">=</span><span class="style_3">0</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printed</span><span class="style_7">=</span><span class="style_8">false</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">for&nbsp;</span><span class="style_8">k&nbsp;</span><span class="style_4">in&nbsp;</span><span class="style_5">"${!chmod_dirs[@]}"</span><span class="style_7">;&nbsp;</span><span class="style_4">do</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">[[&nbsp;</span><span class="style_5">"$k"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"$i|"</span><span class="style_7">*&nbsp;]]&nbsp;||&nbsp;</span><span class="style_4">continue</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">d</span><span class="style_7">=</span><span class="style_5">"${k#*$i|}"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">!&nbsp;</span><span class="style_9">$printed</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;Changed&nbsp;dirs&nbsp;(perms):\n'</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printed</span><span class="style_7">=</span><span class="style_8">true</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;&nbsp;&nbsp;-&nbsp;%s\n'&nbsp;</span><span class="style_5">"$d"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">count</span><span class="style_7">=$((</span><span class="style_8">count&nbsp;</span><span class="style_7">+&nbsp;</span><span class="style_3">1</span><span class="style_7">))</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">((</span><span class="style_8">count&nbsp;</span><span class="style_7">&gt;=&nbsp;</span><span class="style_8">MAX_VERBOSE_DIRS</span><span class="style_7">));&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'&nbsp;&nbsp;&nbsp;&nbsp;-&nbsp;(truncated&nbsp;at&nbsp;%d)\n'&nbsp;</span><span class="style_5">"$MAX_VERBOSE_DIRS"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">break</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">done</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'\n'</span><br />
+&nbsp;&nbsp;<span class="style_4">done</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_6">'Block&nbsp;%d&nbsp;summary:&nbsp;%d&nbsp;changed,&nbsp;%d&nbsp;unchanged,&nbsp;%d&nbsp;missing.\n\n'&nbsp;</span><span class="style_7">\</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_5">"$((b+1))"&nbsp;"$changed_targets"&nbsp;"$unchanged_targets"&nbsp;"${#missing[@]}"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">unset&nbsp;tgts&nbsp;missing&nbsp;pre_u&nbsp;pre_g&nbsp;pre_p&nbsp;post_u&nbsp;post_g&nbsp;post_p</span><br />
+&nbsp;&nbsp;<span class="style_8">unset&nbsp;chown_cnt&nbsp;chmod_cnt&nbsp;chown_dirs&nbsp;chmod_dirs&nbsp;rec_opt</span><br />
+<span class="style_4">done</span><br />
+<br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_2">#&nbsp;Optional&nbsp;refresh-rc&nbsp;(subshell&nbsp;only;&nbsp;does&nbsp;not&nbsp;affect&nbsp;current&nbsp;shell)</span><br />
+<span class="style_2">#------------------------------------------------------------------------------</span><br />
+<span class="style_4">if&nbsp;</span><span class="style_9">$REFRESH_RC</span><span class="style_7">;&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-n&nbsp;</span><span class="style_5">"${SUDO_USER:-}"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">local_user</span><span class="style_7">=</span><span class="style_5">"$SUDO_USER"</span><br />
+&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">local_user</span><span class="style_7">=</span><span class="style_5">"$USER"</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">user_home</span><span class="style_7">=</span><span class="style_5">"$(eval&nbsp;echo&nbsp;"~$local_user")"</span><br />
+&nbsp;&nbsp;<span class="style_8">shell_basename</span><span class="style_7">=</span><span class="style_5">"$(basename&nbsp;"${SHELL:-bash}")"</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_8">rc_file</span><span class="style_7">=</span><span class="style_5">""</span><br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_5">"$shell_basename"&nbsp;</span><span class="style_7">==&nbsp;</span><span class="style_5">"zsh"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">rc_file</span><span class="style_7">=</span><span class="style_5">"$user_home/.zshrc"</span><br />
+&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">rc_file</span><span class="style_7">=</span><span class="style_5">"$user_home/.bashrc"</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<br />
+&nbsp;&nbsp;<span class="style_4">if&nbsp;</span><span class="style_7">[[&nbsp;</span><span class="style_4">-f&nbsp;</span><span class="style_5">"$rc_file"&nbsp;</span><span class="style_7">]];&nbsp;</span><span class="style_4">then</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">printf&nbsp;</span><span class="style_5">"Sourcing&nbsp;%s&nbsp;in&nbsp;a&nbsp;subshell&nbsp;(no&nbsp;effect&nbsp;on&nbsp;current&nbsp;shell).\n"&nbsp;"$rc_file"</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_2">#&nbsp;shellcheck&nbsp;disable=SC1090</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_7">(&nbsp;</span><span class="style_8">source&nbsp;</span><span class="style_5">"$rc_file"&nbsp;</span><span class="style_7">)</span><br />
+&nbsp;&nbsp;<span class="style_4">else</span><br />
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="style_8">warn&nbsp;</span><span class="style_5">"No&nbsp;rc&nbsp;file&nbsp;found&nbsp;at&nbsp;'$rc_file'.&nbsp;Skipping."</span><br />
+&nbsp;&nbsp;<span class="style_4">fi</span><br />
+<span class="style_4">fi</span><br />
+
+</p>
+</body>
+</html>
