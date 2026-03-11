@@ -6,11 +6,11 @@
 # Optional: sudo (for broader access), helpout/batwrap/bat (for help display)
 # ──────────────────────────────────────────────────────────────────────────────
 set -Eeuo pipefail
-IFS=$'\n\t'
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Globals (defaults; override via CLI)
 # ──────────────────────────────────────────────────────────────────────────────
-SCRIPT_NAME="$(basename "$0")"
+SCRIPT_NAME="disk-usage-audit"
 NOW_STAMP="$(date +%Y%m%d_%H%M%S)"
 OUTDIR="$PWD/du_audit_${NOW_STAMP}"
 DEPTH=2             # directory summary depth
@@ -42,17 +42,19 @@ function _have() { command -v "$1" >/dev/null 2>&1; }
 
 # Your preferred bat options (fallback to cat)
 BAT_OPTS=(
-	--style="snip"
+	--style="grid,header,snip"
 	--italic-text="always"
-	--theme="Dracula"
+	--theme="ansi"
 	--squeeze-blank
 	--squeeze-limit="2"
 	--tabs="2"
 	--paging="never"
-  --wrap="auto"
-  --chop-long-lines
-  --force-colorization
-  --paging="never"
+	--chop-long-lines
+	--wrap=never
+	--terminal-width="-1"
+	--force-colorization
+	--italic-text="always"
+	--nonprintable-notation="caret"
 )
 
 function show_help() {
@@ -62,37 +64,33 @@ function show_help() {
 	fi
 
 	if [[ "${viewer}" == "bat" ]]; then
-		cat <<'EOF' | bat "${BAT_OPTS[@]}" -l md
+		cat <<'EOF' | bat ${BAT_OPTS[@]}" -l markdown
 # disk-usage-audit — Comprehensive disk usage report
 
 ## Synopsis
-```sh
+```bash
 disk-usage-audit [options]
 ```
-EOF
-
-  cat <<'EOF2' | bat "${BAT_OPTS[@]}" -l bash 
 
 ## What it does
 - Enumerates local filesystems (excludes virtual/ephemeral by default).
 - Summarizes heaviest directories up to a chosen depth (`du -b -x`).
 - Finds largest files above a size threshold.
 - Aggregates usage by file owner (user) and by file extension.
-- Emits *TSV/CSV* reports into a timestamped folder unless disabled.
+- Emits TSV/CSV reports into a timestamped folder unless disabled.
 - Prints concise Top-N previews to stdout.
 
 ## Key outputs (in $PWD/du_audit_YYYYMMDD_HHMMSS unless changed)
-* `mountpoints.tsv`         — considered mountpoints + used/avail (bytes)
-* `directories.tsv`         — directory sizes (bytes), depth-limited
-* `largest_files.tsv`       — large files (≥ threshold), sorted by size
-* `per_user.tsv`            — total bytes per owner (if enabled)
-* `by_extension.csv`        — bytes & counts aggregated by file extension
+- `mountpoints.tsv`         — considered mountpoints + used/avail (bytes)
+- `directories.tsv`         — directory sizes (bytes), depth-limited
+- `largest_files.tsv`       — large files (≥ threshold), sorted by size
+- `per_user.tsv`            — total bytes per owner (if enabled)
+- `by_extension.csv`        — bytes & counts aggregated by file extension
 
-### Options
-
-"$SCRIPT_NAME" -h, --help           Show this help.
+## Options
+- `-h, --help`                        Show this help.
 - `-q, --quiet`                       Suppress non-essential stdout.
-- `-o, --output DIR`                  Reports output directory (default: _"$(pwd)"_).
+- `-o, --output DIR`                  Reports output directory (default: PWD).
 - `-p, --paths P1,P2,...`             Scan these roots instead of autodetected
                                       mountpoints (still excludes virtual FS).
 - `-d, --depth N`                     Directory summary depth (default: 2).
@@ -104,7 +102,6 @@ EOF
 - `--no-reports`                      Do not write report files, stdout only.
 - `--no-per-user`                     Skip per-user aggregation.
 - `--no-by-ext`                       Skip extension aggregation.
-
 
 ## Examples
 - Basic local audit:
@@ -124,7 +121,7 @@ EOF
 - One-filesystem semantics (`-x`/`-xdev`) avoid crossing mount boundaries.
 - Re-run with `--sudo` or as root to reduce permission denials.
 
-EOF2
+EOF
 	else
 		cat <<'EOF' | "${viewer}"
 # disk-usage-audit — Comprehensive disk usage report
