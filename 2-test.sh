@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
+7z x "/home/heini/compressed-files/zsh-backup-2026-03-12_113629.7z" \
+  -o"$HOME/Recycle Bin"
 
 
 
-bat \
-  --style='header,snip,grid,numbers' \ --italic-text='always' --theme='gruvbox-dark' \
-  --squeeze-blank --squeeze-limit='2' --force-colorization \
-  --terminal-width='-1' --tabs='2' --wrap='auto' --paging='never' \
-  --chop-long-lines "${HOME}/.zshrc" $HOME/.zprofile $HOME/.zsh_profile $HOME/.zshenv $HOME/.zlogin \
-	.zlogout
+cat <<
 
+bind = CTRL ALT, Q, exec, md-fence-insert
+bind = CTRL ALT, R, exec, md-fence-insert r
+bind = CTRL ALT, P, exec, md-fence-insert python
+bind = CTRL ALT, B, exec, md-fence-insert bash
+bind = CTRL ALT, J, exec, md-fence-insert javascript
+bind = CTRL ALT, S, exec, md-fence-insert sql
+bind = CTRL ALT, C, exec, md-fence-insert c
+bind = CTRL ALT, H, exec, md-fence-insert html
