@@ -221,17 +221,24 @@ function write_override_low() {
 # ---------------------------------------------------------------------------
 
 animations {
-  enabled = false
+  enabled = true
   # Disable borderangle loop explicitly (can force continuous rendering).
   animation = borderangle, 0
 }
 
 decoration {
   shadow {
-    enabled = false
+    enabled = true
+    range = 1
+    render_power = 1
   }
   blur {
-    enabled = false
+    enabled = true
+    size = 2
+    passes = 1
+    new_optimizations = true
+    xray = true
+    ignore_opacity = true
   }
 }
 
@@ -269,21 +276,21 @@ decoration {
   blur {
     enabled = true
     size = 3
-    passes = 2
+    passes = 1
     new_optimizations = true
     xray = true
     ignore_opacity = true
 
     # These can be expensive; keep them off in medium.
-    special = false
-    popups = false
+    special = true
+    popups = true
   }
 }
 
 misc {
   vfr = true
-  animate_manual_resizes = false
-  animate_mouse_windowdragging = false
+  animate_manual_resizes = true
+  animate_mouse_windowdragging = true
   disable_hyprland_logo = true
   disable_splash_rendering = true
 }
