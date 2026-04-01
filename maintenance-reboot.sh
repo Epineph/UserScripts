@@ -12,6 +12,9 @@ set -euo pipefail
 # The pending reboot can be cancelled with:
 #   maintenance-reboot cancel
 #
+# It can also be executed immediately with:
+#   maintenance-reboot now
+#
 # Design notes:
 #   - The update sequence runs as the invoking user.
 #   - Root-only commands use sudo individually.
@@ -42,11 +45,13 @@ function show_help() {
 maintenance-reboot
 
 Run a fixed maintenance sequence, then schedule a reboot in 90 seconds.
-The reboot can be cancelled during that countdown window.
+The reboot can be cancelled during that countdown window, or executed
+immediately.
 
 USAGE
   maintenance-reboot run
   maintenance-reboot cancel
+  maintenance-reboot now
   maintenance-reboot status
   maintenance-reboot --help
   maintenance-reboot -h
@@ -70,6 +75,11 @@ CANCEL
   Cancel the pending reboot with:
 
     maintenance-reboot cancel
+
+NOW
+  Execute the pending reboot immediately with:
+
+    maintenance-reboot now
 
 REQUIREMENTS
   Required:
@@ -95,6 +105,7 @@ EXAMPLES
   maintenance-reboot run
   maintenance-reboot status
   maintenance-reboot cancel
+  maintenance-reboot now
   /usr/local/bin/maintenance-reboot run
   chmod +x ./maintenance-reboot && ./maintenance-reboot run
   cp ./maintenance-reboot /usr/local/bin/maintenance-reboot
@@ -277,6 +288,37 @@ function cancel_reboot() {
   fi
 }
 
+function reboot_now() {
+  local had_timer=0
+  local had_notifier=0
+
+  if reboot_is_scheduled; then
+    had_timer=1
+  fi
+
+  if notifier_pid_is_running; then
+    had_notifier=1
+  fi
+
+  if (( had_timer == 0 && had_notifier == 0 )); then
+    die "no pending reboot was found; use '${SCRIPT_NAME} run' first"
+  fi
+
+  run_cmd sudo systemctl stop "${TIMER_UNIT}" "${SERVICE_UNIT}" \
+    >/dev/null 2>&1 || true
+  run_cmd sudo systemctl reset-failed "${TIMER_UNIT}" "${SERVICE_UNIT}" \
+    >/dev/null 2>&1 || true
+
+  cleanup_notifier
+
+  notify_user \
+    "Rebooting now" \
+    "The pending reboot countdown has been bypassed. Rebooting immediately."
+
+  info "Executing pending reboot immediately..."
+  run_cmd sudo systemctl reboot
+}
+
 function show_status() {
   local timer_state="inactive"
   local service_state="inactive"
@@ -346,6 +388,10 @@ function main() {
     cancel)
       ensure_not_root
       cancel_reboot
+      ;;
+    now)
+      ensure_not_root
+      reboot_now
       ;;
     status)
       ensure_not_root
