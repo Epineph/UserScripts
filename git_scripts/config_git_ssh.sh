@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Description of the script
 # This script automates the configuration of Git with a GPG key and an SSH key for secure commit signing
