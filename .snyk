@@ -1,0 +1,123 @@
+# Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
+version: v1.25.1
+ignore: {}
+# patches apply the minimum changes required to fix a vulnerability
+patch:
+  SNYK-JS-LODASH-567746:
+    - wappalyzer-puppeteer > wappalyzer > zombie > lodash:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: SNYK-JS-LODASH-567746
+        path: wappalyzer-puppeteer > wappalyzer > zombie > lodash
+    - wappalyzer-puppeteer > wappalyzer > zombie > jsdom > request-promise-native > request-promise-core > lodash:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: SNYK-JS-LODASH-567746
+        path: >-
+          wappalyzer-puppeteer > wappalyzer > zombie > jsdom >
+          request-promise-native > request-promise-core > lodash
+  'npm:mime:20170907':
+    - dns > winston > request > mime:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:mime:20170907'
+        path: dns > winston > request > mime
+    - dns > tomahawk > express > send > mime:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:mime:20170907'
+        path: dns > tomahawk > express > send > mime
+    - dns > winston > request > form-data > mime:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:mime:20170907'
+        path: dns > winston > request > form-data > mime
+    - dns > tomahawk > winston > request > mime:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:mime:20170907'
+        path: dns > tomahawk > winston > request > mime
+    - dns > tomahawk > express > serve-static > send > mime:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:mime:20170907'
+        path: dns > tomahawk > express > serve-static > send > mime
+    - dns > tomahawk > winston > request > form-data > mime:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:mime:20170907'
+        path: dns > tomahawk > winston > request > form-data > mime
+  'npm:minimatch:20160620':
+    - wappalyzer-cli > cli > glob > minimatch:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:minimatch:20160620'
+        path: wappalyzer-cli > cli > glob > minimatch
+  'npm:ms:20151024':
+    - dns > tomahawk > connect > debug > ms:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ms:20151024'
+        path: dns > tomahawk > connect > debug > ms
+    - dns > tomahawk > express > debug > ms:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ms:20151024'
+        path: dns > tomahawk > express > debug > ms
+    - dns > tomahawk > express > send > ms:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ms:20151024'
+        path: dns > tomahawk > express > send > ms
+    - dns > tomahawk > express > finalhandler > debug > ms:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ms:20151024'
+        path: dns > tomahawk > express > finalhandler > debug > ms
+    - dns > tomahawk > express > send > debug > ms:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ms:20151024'
+        path: dns > tomahawk > express > send > debug > ms
+    - dns > tomahawk > connect > finalhandler > debug > ms:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ms:20151024'
+        path: dns > tomahawk > connect > finalhandler > debug > ms
+    - dns > tomahawk > express > serve-static > send > ms:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ms:20151024'
+        path: dns > tomahawk > express > serve-static > send > ms
+    - dns > tomahawk > express > serve-static > send > debug > ms:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ms:20151024'
+        path: dns > tomahawk > express > serve-static > send > debug > ms
+  'npm:negotiator:20160616':
+    - dns > tomahawk > errorhandler > accepts > negotiator:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:negotiator:20160616'
+        path: dns > tomahawk > errorhandler > accepts > negotiator
+    - dns > tomahawk > express > accepts > negotiator:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:negotiator:20160616'
+        path: dns > tomahawk > express > accepts > negotiator
+  'npm:qs:20140806-1':
+    - dns > tomahawk > body-parser > qs:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:qs:20140806-1'
+        path: dns > tomahawk > body-parser > qs
+    - dns > tomahawk > express > qs:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:qs:20140806-1'
+        path: dns > tomahawk > express > qs
+    - dns > winston > request > qs:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:qs:20140806-1'
+        path: dns > winston > request > qs
+    - dns > tomahawk > winston > request > qs:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:qs:20140806-1'
+        path: dns > tomahawk > winston > request > qs
+  'npm:request:20160119':
+    - dns > winston > request:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:request:20160119'
+        path: dns > winston > request
+    - dns > tomahawk > winston > request:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:request:20160119'
+        path: dns > tomahawk > winston > request
+  'npm:ws:20160920':
+    - dns > tomahawk > socket.io > engine.io > ws:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ws:20160920'
+        path: dns > tomahawk > socket.io > engine.io > ws
+    - dns > tomahawk > socket.io > socket.io-client > engine.io-client > ws:
+        patched: '2025-11-17T11:23:34.832Z'
+        id: 'npm:ws:20160920'
+        path: dns > tomahawk > socket.io > socket.io-client > engine.io-client > ws
