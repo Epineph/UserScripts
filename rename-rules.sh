@@ -1,6 +1,6 @@
 from pathlib import Path
 
-script = r'''#!/usr/bin/env python3
+script = '''#!/usr/bin/env python3
 """
 rename-rules
 
@@ -16,19 +16,12 @@ Default behaviour:
 
 Examples:
   rename-rules ~/Downloads
-
   rename-rules ~/Downloads --apply
-
   rename-rules ~/Downloads --recursive --include-dirs --apply
-
   rename-rules ~/Downloads --spaces "-" --apply
-
   rename-rules ~/Downloads --no-spaces --apply
-
   rename-rules ~/Downloads --glob "* *" --apply
-
-  rename-rules ~/Downloads --regex '^[\"\047].*[\"\047]$' --apply
-
+  rename-rules ~/Downloads --regex '^[\\"\\047].*[\\"\\047]$' --apply
   rename-rules ~/Downloads --interactive --apply
 """
 
@@ -60,30 +53,18 @@ def parse_args() -> argparse.Namespace:
     epilog="""
 Examples:
   rename-rules ~/Downloads
-
   rename-rules ~/Downloads --apply
-
   rename-rules ~/Downloads --recursive --include-dirs --apply
-
   rename-rules ~/Downloads --spaces "_" --apply
-
   rename-rules ~/Downloads --spaces "-" --apply
-
   rename-rules ~/Downloads --no-spaces --apply
-
   rename-rules ~/Downloads --glob "* *" --apply
-
   rename-rules ~/Downloads --regex '^[\\"\\047].*[\\"\\047]$' --apply
-
   rename-rules ~/Downloads --interactive --apply
 """
   )
 
-  parser.add_argument(
-    "targets",
-    nargs="+",
-    help="Files and/or directories to inspect."
-  )
+  parser.add_argument("targets", nargs="+", help="Files/directories to inspect.")
 
   parser.add_argument(
     "-a",
@@ -199,7 +180,8 @@ def is_hidden(path: Path) -> bool:
 
 
 def has_filter_match(name: str, args: argparse.Namespace) -> bool:
-  if args.glob and not any(fnmatch.fnmatchcase(name, pat) for pat in args.glob):
+  if args.glob and not any(fnmatch.fnmatchcase(name, pat)
+                           for pat in args.glob):
     return False
 
   if args.regex and not any(re.search(expr, name) for expr in args.regex):
@@ -210,12 +192,13 @@ def has_filter_match(name: str, args: argparse.Namespace) -> bool:
 
 def strip_matching_quote_wrappers(name: str) -> str:
   """
-  Strip literal matching quote wrappers in two common forms:
+  Strip literal matching quote wrappers in two common forms.
 
-    "'file name.pdf'"  -> "file name.pdf"
-    "'file name'.pdf"  -> "file name.pdf"
+  Examples:
+    "'file name.pdf'" -> "file name.pdf"
+    "'file name'.pdf" -> "file name.pdf"
 
-  This intentionally does not remove unmatched quotes.
+  Unmatched quotes are intentionally preserved.
   """
   previous = None
   current = name
@@ -263,7 +246,7 @@ def transform_name(name: str, args: argparse.Namespace) -> str:
     if args.no_squeeze:
       new_name = new_name.replace(" ", args.spaces)
     else:
-      new_name = re.sub(r"\s+", args.spaces, new_name)
+      new_name = re.sub(r"\\s+", args.spaces, new_name)
       new_name = squeeze_replacement_runs(new_name, args.spaces)
 
   if args.lower:
@@ -330,7 +313,8 @@ def collect_candidates(args: argparse.Namespace) -> list[Path]:
     if has_filter_match(path.name, args)
   ]
 
-  # Rename deepest paths first, so recursive directory renames do not break paths.
+  # Rename deepest paths first, so recursive directory renames do not break
+  # paths before child files have been processed.
   filtered.sort(key=lambda p: len(p.parts), reverse=True)
 
   return filtered
@@ -369,7 +353,7 @@ def build_plan(args: argparse.Namespace) -> list[RenamePlan]:
 
 
 def confirm(plan: RenamePlan) -> bool:
-  answer = input(f"Rename?\n  {plan.source}\n  -> {plan.destination}\n[y/N] ")
+  answer = input(f"Rename?\\n  {plan.source}\\n  -> {plan.destination}\\n[y/N] ")
   return answer.lower() in {"y", "yes"}
 
 
@@ -421,7 +405,7 @@ def main() -> int:
 
   if not args.apply:
     if plan and not args.quiet:
-      print("\nDry-run only. Add --apply to perform these renames.")
+      print("\\nDry-run only. Add --apply to perform these renames.")
     return 0
 
   return 1 if apply_plan(plan, args) else 0
@@ -431,8 +415,8 @@ if __name__ == "__main__":
   raise SystemExit(main())
 '''
 
-path = Path("/mnt/data/rename-rules")
-path.write_text(script)
+path = Path("/mnt/data/rename-rules-fixed")
+path.write_text(script, encoding="utf-8")
 path.chmod(0o755)
-path
+print(path)
 
