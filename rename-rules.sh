@@ -1,6 +1,8 @@
 from pathlib import Path
+import subprocess
+import textwrap
 
-script = '''#!/usr/bin/env python3
+script = r'''#!/usr/bin/env python3
 """
 rename-rules
 
@@ -21,7 +23,6 @@ Examples:
   rename-rules ~/Downloads --spaces "-" --apply
   rename-rules ~/Downloads --no-spaces --apply
   rename-rules ~/Downloads --glob "* *" --apply
-  rename-rules ~/Downloads --regex '^[\\"\\047].*[\\"\\047]$' --apply
   rename-rules ~/Downloads --interactive --apply
 """
 
@@ -47,8 +48,8 @@ def parse_args() -> argparse.Namespace:
     prog="rename-rules",
     formatter_class=argparse.RawDescriptionHelpFormatter,
     description=(
-      "Rename files/directories by stripping literal quote wrappers and "
-      "replacing spaces/whitespace with a chosen replacement."
+      "Safely rename files/directories by stripping literal quote wrappers "
+      "and replacing whitespace with a chosen replacement."
     ),
     epilog="""
 Examples:
@@ -59,30 +60,30 @@ Examples:
   rename-rules ~/Downloads --spaces "-" --apply
   rename-rules ~/Downloads --no-spaces --apply
   rename-rules ~/Downloads --glob "* *" --apply
-  rename-rules ~/Downloads --regex '^[\\"\\047].*[\\"\\047]$' --apply
   rename-rules ~/Downloads --interactive --apply
 """
   )
 
-  parser.add_argument("targets", nargs="+", help="Files/directories to inspect.")
+  parser.add_argument(
+    "targets",
+    nargs="+",
+    help="Files and/or directories to inspect."
+  )
 
   parser.add_argument(
-    "-a",
-    "--apply",
+    "-a", "--apply",
     action="store_true",
     help="Actually rename files. Without this, only print a dry-run plan."
   )
 
   parser.add_argument(
-    "-r",
-    "--recursive",
+    "-r", "--recursive",
     action="store_true",
     help="Recurse into target directories."
   )
 
   parser.add_argument(
-    "-d",
-    "--include-dirs",
+    "-d", "--include-dirs",
     action="store_true",
     help="Also rename directories, not only files."
   )
@@ -143,7 +144,7 @@ Examples:
   parser.add_argument(
     "--no-squeeze",
     action="store_true",
-    help="Do not collapse repeated whitespace/replacement runs."
+    help="Do not collapse repeated replacement runs."
   )
 
   parser.add_argument(
@@ -153,8 +154,7 @@ Examples:
   )
 
   parser.add_argument(
-    "-i",
-    "--interactive",
+    "-i", "--interactive",
     action="store_true",
     help="Ask before each rename. Only meaningful with --apply."
   )
@@ -166,8 +166,7 @@ Examples:
   )
 
   parser.add_argument(
-    "-q",
-    "--quiet",
+    "-q", "--quiet",
     action="store_true",
     help="Only print warnings/errors."
   )
@@ -180,23 +179,26 @@ def is_hidden(path: Path) -> bool:
 
 
 def has_filter_match(name: str, args: argparse.Namespace) -> bool:
-  if args.glob and not any(fnmatch.fnmatchcase(name, pat)
-                           for pat in args.glob):
-    return False
+  if args.glob:
+    if not any(fnmatch.fnmatchcase(name, pattern) for pattern in args.glob):
+      return False
 
-  if args.regex and not any(re.search(expr, name) for expr in args.regex):
-    return False
+  if args.regex:
+    if not any(re.search(pattern, name) for pattern in args.regex):
+      return False
 
   return True
 
 
 def strip_matching_quote_wrappers(name: str) -> str:
   """
-  Strip literal matching quote wrappers in two common forms.
+  Strip literal matching quote wrappers.
 
-  Examples:
+  Supported forms:
     "'file name.pdf'" -> "file name.pdf"
     "'file name'.pdf" -> "file name.pdf"
+    '"file name.pdf"' -> "file name.pdf"
+    '"file name".pdf' -> "file name.pdf"
 
   Unmatched quotes are intentionally preserved.
   """
@@ -216,6 +218,7 @@ def strip_matching_quote_wrappers(name: str) -> str:
         continue
 
       stem = current[:-len(suffix)]
+
       if len(stem) >= 2 and stem[0] == quote and stem[-1] == quote:
         current = stem[1:-1] + suffix
 
@@ -246,7 +249,7 @@ def transform_name(name: str, args: argparse.Namespace) -> str:
     if args.no_squeeze:
       new_name = new_name.replace(" ", args.spaces)
     else:
-      new_name = re.sub(r"\\s+", args.spaces, new_name)
+      new_name = re.sub(r"\s+", args.spaces, new_name)
       new_name = squeeze_replacement_runs(new_name, args.spaces)
 
   if args.lower:
@@ -263,8 +266,8 @@ def collect_from_directory(root: Path, args: argparse.Namespace) -> list[Path]:
       current_dir = Path(dirpath)
 
       if not args.hidden:
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
-        filenames = [f for f in filenames if not f.startswith(".")]
+        dirnames[:] = [name for name in dirnames if not name.startswith(".")]
+        filenames = [name for name in filenames if not name.startswith(".")]
 
       for filename in filenames:
         candidates.append(current_dir / filename)
@@ -313,9 +316,9 @@ def collect_candidates(args: argparse.Namespace) -> list[Path]:
     if has_filter_match(path.name, args)
   ]
 
-  # Rename deepest paths first, so recursive directory renames do not break
-  # paths before child files have been processed.
-  filtered.sort(key=lambda p: len(p.parts), reverse=True)
+  # Deepest paths first prevents recursive directory renames from breaking
+  # still-pending child paths.
+  filtered.sort(key=lambda path: len(path.parts), reverse=True)
 
   return filtered
 
@@ -353,7 +356,7 @@ def build_plan(args: argparse.Namespace) -> list[RenamePlan]:
 
 
 def confirm(plan: RenamePlan) -> bool:
-  answer = input(f"Rename?\\n  {plan.source}\\n  -> {plan.destination}\\n[y/N] ")
+  answer = input(f"Rename?\n  {plan.source}\n  -> {plan.destination}\n[y/N] ")
   return answer.lower() in {"y", "yes"}
 
 
@@ -405,7 +408,7 @@ def main() -> int:
 
   if not args.apply:
     if plan and not args.quiet:
-      print("\\nDry-run only. Add --apply to perform these renames.")
+      print("\nDry-run only. Add --apply to perform these renames.")
     return 0
 
   return 1 if apply_plan(plan, args) else 0
@@ -415,8 +418,20 @@ if __name__ == "__main__":
   raise SystemExit(main())
 '''
 
-path = Path("/mnt/data/rename-rules-fixed")
-path.write_text(script, encoding="utf-8")
-path.chmod(0o755)
-print(path)
+out = Path("/mnt/data/rename-rules")
+out.write_text(script, encoding="utf-8")
+out.chmod(0o755)
+
+result = subprocess.run(
+    [str(out), "--help"],
+    check=True,
+    text=True,
+    capture_output=True
+)
+
+print(f"Wrote: {out}")
+print(f"Executable: {oct(out.stat().st_mode & 0o777)}")
+print("First line:", out.read_text(encoding="utf-8").splitlines()[0])
+print("\nHelp smoke-test:")
+print("\n".join(result.stdout.splitlines()[:12]))
 
