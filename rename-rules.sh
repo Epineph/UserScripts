@@ -1,8 +1,4 @@
-from pathlib import Path
-import subprocess
-import textwrap
-
-script = r'''#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 rename-rules
 
@@ -15,15 +11,6 @@ Default behaviour:
   - replace whitespace runs with "_"
   - skip unchanged names
   - skip collisions unless --overwrite is explicitly given
-
-Examples:
-  rename-rules ~/Downloads
-  rename-rules ~/Downloads --apply
-  rename-rules ~/Downloads --recursive --include-dirs --apply
-  rename-rules ~/Downloads --spaces "-" --apply
-  rename-rules ~/Downloads --no-spaces --apply
-  rename-rules ~/Downloads --glob "* *" --apply
-  rename-rules ~/Downloads --interactive --apply
 """
 
 from __future__ import annotations
@@ -54,12 +41,19 @@ def parse_args() -> argparse.Namespace:
     epilog="""
 Examples:
   rename-rules ~/Downloads
+
   rename-rules ~/Downloads --apply
+
   rename-rules ~/Downloads --recursive --include-dirs --apply
+
   rename-rules ~/Downloads --spaces "_" --apply
+
   rename-rules ~/Downloads --spaces "-" --apply
+
   rename-rules ~/Downloads --no-spaces --apply
+
   rename-rules ~/Downloads --glob "* *" --apply
+
   rename-rules ~/Downloads --interactive --apply
 """
   )
@@ -71,19 +65,22 @@ Examples:
   )
 
   parser.add_argument(
-    "-a", "--apply",
+    "-a",
+    "--apply",
     action="store_true",
     help="Actually rename files. Without this, only print a dry-run plan."
   )
 
   parser.add_argument(
-    "-r", "--recursive",
+    "-r",
+    "--recursive",
     action="store_true",
     help="Recurse into target directories."
   )
 
   parser.add_argument(
-    "-d", "--include-dirs",
+    "-d",
+    "--include-dirs",
     action="store_true",
     help="Also rename directories, not only files."
   )
@@ -154,7 +151,8 @@ Examples:
   )
 
   parser.add_argument(
-    "-i", "--interactive",
+    "-i",
+    "--interactive",
     action="store_true",
     help="Ask before each rename. Only meaningful with --apply."
   )
@@ -166,7 +164,8 @@ Examples:
   )
 
   parser.add_argument(
-    "-q", "--quiet",
+    "-q",
+    "--quiet",
     action="store_true",
     help="Only print warnings/errors."
   )
@@ -316,8 +315,6 @@ def collect_candidates(args: argparse.Namespace) -> list[Path]:
     if has_filter_match(path.name, args)
   ]
 
-  # Deepest paths first prevents recursive directory renames from breaking
-  # still-pending child paths.
   filtered.sort(key=lambda path: len(path.parts), reverse=True)
 
   return filtered
@@ -416,22 +413,3 @@ def main() -> int:
 
 if __name__ == "__main__":
   raise SystemExit(main())
-'''
-
-out = Path("/mnt/data/rename-rules")
-out.write_text(script, encoding="utf-8")
-out.chmod(0o755)
-
-result = subprocess.run(
-    [str(out), "--help"],
-    check=True,
-    text=True,
-    capture_output=True
-)
-
-print(f"Wrote: {out}")
-print(f"Executable: {oct(out.stat().st_mode & 0o777)}")
-print("First line:", out.read_text(encoding="utf-8").splitlines()[0])
-print("\nHelp smoke-test:")
-print("\n".join(result.stdout.splitlines()[:12]))
-
