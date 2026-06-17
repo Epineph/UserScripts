@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# tor-privacy-v2
+# tor-privacy-v2.1
 # -----------------------------------------------------------------------------
 # Arch Linux Tor privacy controller.
 #
@@ -23,7 +23,7 @@ set -Eeuo pipefail
 # -----------------------------------------------------------------------------
 # Constants
 # -----------------------------------------------------------------------------
-readonly APP_NAME="tor-privacy-v2"
+readonly APP_NAME="tor-privacy-v2.1"
 readonly INSTALL_BIN="/usr/local/bin/tor-privacy"
 readonly TW_BIN="/usr/local/bin/tw"
 
@@ -217,18 +217,35 @@ function die() {
 }
 
 function on_error() {
-  local exit_code line_no
-  exit_code="$?"
-  line_no="${1:-unknown}"
+  local exit_code
+  local line_no
+  local command_text
+
+  exit_code="${1:-1}"
+  line_no="${2:-unknown}"
+  command_text="${3:-unknown command}"
+
+  # Bash ERR traps can be reached after helper commands such as `local` have
+  # already overwritten `$?`. Passing `$?` explicitly from the trap preserves
+  # the actual failing status and avoids the misleading "exit code 0" report.
+  if [[ "${exit_code}" -eq 0 ]]; then
+    return 0
+  fi
+
   printf 'error: %s failed near line %s with exit code %s\n' \
     "${APP_NAME}" "${line_no}" "${exit_code}" >&2
+  printf 'error: failing command: %s\n' "${command_text}" >&2
   exit "${exit_code}"
 }
 
-trap 'on_error "${LINENO}"' ERR
+trap 'on_error "$?" "${LINENO}" "${BASH_COMMAND}"' ERR
 
 function verbose() {
-  [[ "${VERBOSE}" == true ]] && printf '%s\n' "$*" >&2
+  if [[ "${VERBOSE}" == true ]]; then
+    printf '%s\n' "$*" >&2
+  fi
+
+  return 0
 }
 
 function have() {
@@ -568,6 +585,8 @@ table inet ${NFT_TABLE_FILTER} {
 
     # Local IPC/loopback is not a network anonymity leak.
     oifname "lo" accept
+    ip daddr 127.0.0.1 tcp dport { ${TOR_SOCKS_PORT}, ${TOR_TRANS_PORT} } accept
+    ip daddr 127.0.0.1 udp dport ${TOR_DNS_PORT} accept
 
     # DHCP is needed after MAC rotation or reconnects.
     udp sport 68 udp dport 67 accept
