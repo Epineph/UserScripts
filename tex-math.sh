@@ -5,8 +5,6 @@ set -euo pipefail
 #===============================================================================
 # texmath
 #
-# Version: 2026-06-21-r2
-#
 # Render LaTeX/math in the terminal:
 #
 #   LaTeX body -> generated .tex -> PDF -> PNG -> chafa
@@ -40,15 +38,12 @@ INPUT MODES
   Default math mode:
     The input is wrapped in:
 
-      \begin{equation*}
+      \[
         ...
-      \end{equation*}
+      \]
 
     Good for ordinary formula fragments and environments that require math mode,
     e.g. aligned, cases, matrix.
-
-    This deliberately avoids the shorthand display delimiters \[...\], because
-    those can be fragile with standalone/varwidth rendering in some engines.
 
   -r, --raw, --body
     Insert the input directly into the LaTeX document body.
@@ -581,7 +576,7 @@ function generate_tex_file() {
 
     case "$mode" in
       math)
-        printf '\\begin{equation*}\n%s\n\\end{equation*}\n' "$latex_body"
+        printf '\\[\n%s\n\\]\n' "$latex_body"
         ;;
       raw)
         printf '%s\n' "$latex_body"
