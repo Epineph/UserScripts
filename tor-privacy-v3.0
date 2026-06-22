@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# tor-privacy-v2.2
+# tor-privacy-v3.0
 # -----------------------------------------------------------------------------
 # Arch Linux Tor privacy controller.
 #
@@ -24,7 +24,7 @@ set -Eeuo pipefail
 # -----------------------------------------------------------------------------
 # Constants
 # -----------------------------------------------------------------------------
-readonly APP_NAME="tor-privacy-v2.2"
+readonly APP_NAME="tor-privacy-v3.0"
 readonly INSTALL_BIN="/usr/local/bin/tor-privacy"
 readonly TW_BIN="/usr/local/bin/tw"
 
@@ -34,18 +34,21 @@ readonly BACKUP_DIR="${STATE_DIR}/backups"
 readonly TORRC="/etc/tor/torrc"
 readonly TOR_SERVICE="tor.service"
 
-readonly TOR_BLOCK_BEGIN="# >>> tor-privacy-v2 managed block >>>"
-readonly TOR_BLOCK_END="# <<< tor-privacy-v2 managed block <<<"
+readonly TOR_BLOCK_BEGIN="# >>> tor-privacy-v3 managed block >>>"
+readonly TOR_BLOCK_END="# <<< tor-privacy-v3 managed block <<<"
 
+readonly OLD_V2_PRIVACY_BEGIN="# >>> tor-privacy-v2 managed block >>>"
+readonly OLD_V2_PRIVACY_END="# <<< tor-privacy-v2 managed block <<<"
 readonly OLD_PRIVACY_BEGIN="# >>> tor-privacy managed block >>>"
 readonly OLD_PRIVACY_END="# <<< tor-privacy managed block <<<"
 readonly OLD_RESEARCH_BEGIN="# BEGIN managed by tor-research"
 readonly OLD_RESEARCH_END="# END managed by tor-research"
 
-readonly NFT_RULES="/etc/tor/tor-privacy-v2.nft"
+readonly OLD_V2_NFT_RULES="/etc/tor/tor-privacy-v2.nft"
+readonly NFT_RULES="/etc/tor/tor-privacy-v3.nft"
 readonly NFT_UNIT="/etc/systemd/system/tor-privacy-nft.service"
-readonly NFT_TABLE_NAT="torprivacy_v2_nat"
-readonly NFT_TABLE_FILTER="torprivacy_v2_filter"
+readonly NFT_TABLE_NAT="torprivacy_v3_nat"
+readonly NFT_TABLE_FILTER="torprivacy_v3_filter"
 
 readonly NM_MAC_CONF="/etc/NetworkManager/conf.d/90-tor-privacy-mac.conf"
 
@@ -53,7 +56,11 @@ readonly TOR_SOCKS_HOST="127.0.0.1"
 readonly TOR_SOCKS_PORT="9050"
 readonly TOR_TRANS_PORT="9040"
 readonly TOR_DNS_PORT="9053"
+readonly TOR_CONTROL_HOST="127.0.0.1"
+readonly TOR_CONTROL_PORT="9051"
+readonly TOR_CONTROL_PASSWORD="${TOR_PRIVACY_CONTROL_PASSWORD:-torprivacy-system-tor-v3}"
 readonly TOR_SOCKS_URL="socks5h://${TOR_SOCKS_HOST}:${TOR_SOCKS_PORT}"
+readonly TOR_CONTROL_URL="${TOR_CONTROL_HOST}:${TOR_CONTROL_PORT}"
 readonly TOR_CHECK_URL="https://check.torproject.org/api/ip"
 readonly TOR_FALLBACK_IP_URL="https://ifconfig.io/ip"
 
@@ -115,6 +122,9 @@ CORE COMMANDS
              [--vpn-underlay] [--vpn-endpoint PROTO:IP:PORT]
       Start Tor. With --killswitch, load the nftables leak guard. With
       --persist, enable Tor and the leak guard after reboot.
+
+      Do not stack --killswitch on top of ProtonVPN's own killswitch. v3.0
+      refuses that combination by default because it can drop the VPN.
 
       --vpn-underlay
           Explicitly request active WireGuard endpoint detection, such as
@@ -194,12 +204,23 @@ RESEARCH COMMANDS
 BROWSER COMMANDS
   browser [tor-browser-args...]
       Configure the installed Tor Browser profile to use this script's system
-      Tor SOCKS listener, then launch Tor Browser with TOR_SKIP_LAUNCH=1.
-      Run this as your desktop user, not with sudo. Start Tor first with:
-        sudo tor-privacy start --killswitch
+      Tor SOCKS listener and local ControlPort, then launch Tor Browser with
+      TOR_SKIP_LAUNCH=1 and TOR_CONTROL_PASSWD set.
+      Run this as your desktop user, not with sudo. With ProtonVPN active,
+      start Tor first without the v3 nftables guard:
+        sudo tor-privacy browser-start
 
   browser-config
       Only write/update the Tor Browser system-Tor profile preferences.
+
+  browser-start [--persist]
+      Start only tor.service and the browser-ready SOCKS/ControlPort config.
+      This deliberately does not load the v3 nftables guard, making it the
+      safer workflow when ProtonVPN's own killswitch is already active.
+
+  browser-doctor
+      Check Tor Browser profile, managed prefs, Tor SOCKS, and Tor ControlPort
+      readiness without launching the browser.
 
 NETWORKMANAGER COMMANDS
   mac-on
@@ -222,12 +243,14 @@ EXAMPLES
   sudo tor-privacy start --killswitch --persist
   sudo tor-privacy strict-on
   sudo tor-privacy strict-on --allow-lan
+  sudo tor-privacy browser-start
   tor-privacy status
   tor-privacy doctor --online
   tor-privacy check
   tor-privacy curl https://check.torproject.org/api/ip
   tor-privacy git-ls https://github.com/torproject/tor.git
   tor-privacy browser
+  tor-privacy browser-doctor
   eval "$(tor-privacy env)"
   tor-privacy shell
   sudo tor-privacy off
@@ -647,7 +670,7 @@ function ensure_torrc_exists() {
 function torrc_has_any_managed_block() {
   [[ -r "${TORRC}" ]] || return 1
   grep -Eq \
-    '^(# >>> tor-privacy-v2 managed block >>>|# >>> tor-privacy managed block >>>|# BEGIN managed by tor-research)$' \
+    '^(# >>> tor-privacy-v3 managed block >>>|# >>> tor-privacy-v2 managed block >>>|# >>> tor-privacy managed block >>>|# BEGIN managed by tor-research)$' \
     "${TORRC}"
 }
 
@@ -667,10 +690,11 @@ function remove_managed_tor_blocks() {
 
   awk \
     -v b1="${TOR_BLOCK_BEGIN}" -v e1="${TOR_BLOCK_END}" \
-    -v b2="${OLD_PRIVACY_BEGIN}" -v e2="${OLD_PRIVACY_END}" \
-    -v b3="${OLD_RESEARCH_BEGIN}" -v e3="${OLD_RESEARCH_END}" '
-      $0 == b1 || $0 == b2 || $0 == b3 { skip = 1; next }
-      $0 == e1 || $0 == e2 || $0 == e3 { skip = 0; next }
+    -v b2="${OLD_V2_PRIVACY_BEGIN}" -v e2="${OLD_V2_PRIVACY_END}" \
+    -v b3="${OLD_PRIVACY_BEGIN}" -v e3="${OLD_PRIVACY_END}" \
+    -v b4="${OLD_RESEARCH_BEGIN}" -v e4="${OLD_RESEARCH_END}" '
+      $0 == b1 || $0 == b2 || $0 == b3 || $0 == b4 { skip = 1; next }
+      $0 == e1 || $0 == e2 || $0 == e3 || $0 == e4 { skip = 0; next }
       skip != 1 { print }
     ' "${TORRC}" > "${tmp}"
 
@@ -679,16 +703,26 @@ function remove_managed_tor_blocks() {
   info "removed old managed Tor blocks from ${TORRC}"
 }
 
+function tor_hashed_control_password() {
+  require_cmd tor
+  tor --hash-password "${TOR_CONTROL_PASSWORD}" \
+    | awk '/^16:/ { print; found = 1; exit } END { exit(found ? 0 : 1) }'
+}
+
 function write_tor_config() {
   require_root
   ensure_torrc_exists
   ensure_tor_data_dir
   remove_managed_tor_blocks
 
+  local control_hash
+  control_hash="$(tor_hashed_control_password)" \
+    || die "failed to hash Tor ControlPort password"
+
   cat >> "${TORRC}" <<EOF
 
 ${TOR_BLOCK_BEGIN}
-# Client-only Tor configuration generated by tor-privacy-v2.
+# Client-only Tor configuration generated by tor-privacy-v3.
 # Do not edit this block manually; edit the script and rerun repair/install.
 ClientOnly 1
 DataDirectory /var/lib/tor
@@ -708,6 +742,12 @@ TransPort ${TOR_SOCKS_HOST}:${TOR_TRANS_PORT}
 DNSPort ${TOR_SOCKS_HOST}:${TOR_DNS_PORT}
 VirtualAddrNetworkIPv4 10.192.0.0/10
 AutomapHostsOnResolve 1
+
+# Local control port used by Tor Browser's documented system-Tor mode.
+# It is loopback-only and password-authenticated.
+ControlPort ${TOR_CONTROL_URL}
+HashedControlPassword ${control_hash}
+CookieAuthentication 1
 ${TOR_BLOCK_END}
 EOF
 
@@ -742,6 +782,8 @@ function delete_managed_nft_tables() {
   run_cmd nft delete table ip torprivacy_nat >/dev/null 2>&1 || true
   run_cmd nft delete table inet torprivacy_filter >/dev/null 2>&1 || true
   run_cmd nft delete table inet tor_research >/dev/null 2>&1 || true
+  run_cmd nft delete table ip torprivacy_v2_nat >/dev/null 2>&1 || true
+  run_cmd nft delete table inet torprivacy_v2_filter >/dev/null 2>&1 || true
   run_cmd nft delete table ip "${NFT_TABLE_NAT}" >/dev/null 2>&1 || true
   run_cmd nft delete table inet "${NFT_TABLE_FILTER}" >/dev/null 2>&1 || true
 }
@@ -768,8 +810,8 @@ function write_nft_rules() {
   cat > "${NFT_RULES}" <<EOF
 #!/usr/bin/nft -f
 # -----------------------------------------------------------------------------
-# tor-privacy-v2 nftables leak guard
-# Generated by tor-privacy-v2. Do not edit manually.
+# tor-privacy-v3 nftables leak guard
+# Generated by tor-privacy-v3. Do not edit manually.
 # -----------------------------------------------------------------------------
 
 table ip ${NFT_TABLE_NAT} {
@@ -809,7 +851,7 @@ table inet ${NFT_TABLE_FILTER} {
 
     # Local IPC/loopback is not a network anonymity leak.
     oifname "lo" accept
-    ip daddr 127.0.0.1 tcp dport { ${TOR_SOCKS_PORT}, ${TOR_TRANS_PORT} } accept
+    ip daddr 127.0.0.1 tcp dport { ${TOR_SOCKS_PORT}, ${TOR_TRANS_PORT}, ${TOR_CONTROL_PORT} } accept
     ip daddr 127.0.0.1 udp dport ${TOR_DNS_PORT} accept
 
     # DHCP is needed after MAC rotation or reconnects.
@@ -852,14 +894,14 @@ function write_nft_unit() {
 
   cat > "${NFT_UNIT}" <<EOF
 [Unit]
-Description=tor-privacy-v2 nftables Tor leak guard
+Description=tor-privacy-v3 nftables Tor leak guard
 Documentation=man:nft(8)
 Wants=${TOR_SERVICE}
 After=${TOR_SERVICE}
 
 [Service]
 Type=oneshot
-ExecStartPre=/usr/bin/bash -c '/usr/bin/nft delete table ip torprivacy_nat 2>/dev/null || true; /usr/bin/nft delete table inet torprivacy_filter 2>/dev/null || true; /usr/bin/nft delete table inet tor_research 2>/dev/null || true; /usr/bin/nft delete table ip ${NFT_TABLE_NAT} 2>/dev/null || true; /usr/bin/nft delete table inet ${NFT_TABLE_FILTER} 2>/dev/null || true'
+ExecStartPre=/usr/bin/bash -c '/usr/bin/nft delete table ip torprivacy_nat 2>/dev/null || true; /usr/bin/nft delete table inet torprivacy_filter 2>/dev/null || true; /usr/bin/nft delete table inet tor_research 2>/dev/null || true; /usr/bin/nft delete table ip torprivacy_v2_nat 2>/dev/null || true; /usr/bin/nft delete table inet torprivacy_v2_filter 2>/dev/null || true; /usr/bin/nft delete table ip ${NFT_TABLE_NAT} 2>/dev/null || true; /usr/bin/nft delete table inet ${NFT_TABLE_FILTER} 2>/dev/null || true'
 ExecStart=/usr/bin/nft -f ${NFT_RULES}
 ExecStop=/usr/bin/bash -c '/usr/bin/nft delete table ip ${NFT_TABLE_NAT} 2>/dev/null || true; /usr/bin/nft delete table inet ${NFT_TABLE_FILTER} 2>/dev/null || true'
 RemainAfterExit=yes
@@ -906,12 +948,30 @@ function nft_tables_loaded() {
     && nft list table inet "${NFT_TABLE_FILTER}" >/dev/null 2>&1
 }
 
+function protonvpn_killswitch_active() {
+  [[ -e /sys/class/net/pvpnksintrf0 ]] && return 0
+  [[ -e /sys/class/net/ipv6leakintrf0 ]] && return 0
+
+  have nmcli || return 1
+  nmcli -t -f NAME,STATE connection show --active 2>/dev/null \
+    | grep -Eq '^(pvpn-killswitch|pvpn-killswitch-ipv6):'
+}
+
+function refuse_protonvpn_killswitch_stack() {
+  [[ "${TOR_PRIVACY_FORCE_NFT_WITH_PROTON:-0}" == "1" ]] && return 0
+
+  if protonvpn_killswitch_active; then
+    die "ProtonVPN killswitch is active; use: sudo tor-privacy browser-start"
+  fi
+}
+
 function start_killswitch() {
   local persist allow_lan
   persist="${1:-no}"
   allow_lan="${2:-no}"
 
   require_root
+  refuse_protonvpn_killswitch_stack
   write_nft_rules "${allow_lan}"
   write_nft_unit
   validate_nft_rules_or_die
@@ -1019,7 +1079,7 @@ function enable_mac_randomisation() {
 
   cat > "${NM_MAC_CONF}" <<'EOF'
 # -----------------------------------------------------------------------------
-# tor-privacy-v2 NetworkManager MAC randomisation defaults
+# tor-privacy-v3 NetworkManager MAC randomisation defaults
 # -----------------------------------------------------------------------------
 [device-90-tor-privacy]
 wifi.scan-rand-mac-address=yes
@@ -1305,6 +1365,17 @@ function require_not_root() {
   ! is_root || die "run this command as your desktop user, not with sudo"
 }
 
+function tor_browser_control_password_env() {
+  if [[ -n "${TOR_CONTROL_PASSWD:-}" ]]; then
+    case "${TOR_CONTROL_PASSWD}" in
+      \"*) printf '%s\n' "${TOR_CONTROL_PASSWD}" ;;
+      *) printf '"%s"\n' "${TOR_CONTROL_PASSWD}" ;;
+    esac
+  else
+    printf '"%s"\n' "${TOR_CONTROL_PASSWORD}"
+  fi
+}
+
 function tor_browser_start_script() {
   local candidate tbb_root
 
@@ -1345,6 +1416,57 @@ function tor_browser_profile_dir() {
   printf '%s\n' "${profile_dir}"
 }
 
+function tor_browser_profile_locked() {
+  local profile_dir lock
+  profile_dir="$1"
+
+  for lock in \
+    "${profile_dir}/lock" \
+    "${profile_dir}/parent.lock" \
+    "${profile_dir}/.parentlock"; do
+    [[ -e "${lock}" ]] && return 0
+  done
+
+  return 1
+}
+
+function tor_browser_process_running() {
+  have pgrep || return 2
+
+  pgrep -u "$(id -u)" -f \
+    '/tor-browser/Browser/(firefox|start-tor-browser)|/TorBrowser/' \
+    >/dev/null 2>&1
+}
+
+function remove_tor_browser_profile_locks() {
+  local profile_dir lock
+  profile_dir="$1"
+
+  for lock in \
+    "${profile_dir}/lock" \
+    "${profile_dir}/parent.lock" \
+    "${profile_dir}/.parentlock"; do
+    [[ -e "${lock}" || -L "${lock}" ]] || continue
+    rm -f "${lock}"
+  done
+}
+
+function require_tor_browser_profile_closed() {
+  local profile_dir
+  profile_dir="$1"
+
+  [[ "${TOR_BROWSER_IGNORE_LOCK:-0}" == "1" ]] && return 0
+
+  if tor_browser_profile_locked "${profile_dir}"; then
+    if tor_browser_process_running; then
+      die "Tor Browser profile appears to be running; close Tor Browser first"
+    fi
+
+    warn "Tor Browser profile lock was stale; removing lock files"
+    remove_tor_browser_profile_locks "${profile_dir}"
+  fi
+}
+
 function user_file_has_managed_block() {
   local file
   file="$1"
@@ -1360,6 +1482,13 @@ function write_tor_browser_system_tor_prefs() {
   profile_dir="$(tor_browser_profile_dir)" \
     || die "Tor Browser bundle not found; install/run torbrowser-launcher first"
   userjs="${profile_dir}/user.js"
+
+  require_tor_browser_profile_closed "${profile_dir}"
+
+  if [[ "${DRY_RUN}" == true ]]; then
+    info "would write Tor Browser system-Tor preferences to ${userjs}"
+    return 0
+  fi
 
   install -d -m 0700 "${profile_dir}"
 
@@ -1391,9 +1520,15 @@ user_pref("network.proxy.socks_port", ${TOR_SOCKS_PORT});
 user_pref("network.proxy.socks_version", 5);
 user_pref("network.proxy.socks_remote_dns", true);
 user_pref("network.proxy.no_proxies_on", "localhost, 127.0.0.1, ::1");
+user_pref("extensions.torbutton.inserted_button", true);
 user_pref("extensions.torlauncher.start_tor", false);
 user_pref("extensions.torlauncher.prompt_at_startup", false);
+user_pref("extensions.torlauncher.control_port", ${TOR_CONTROL_PORT});
+user_pref("extensions.torlauncher.loglevel", 2);
+user_pref("extensions.torlauncher.logmethod", 0);
 user_pref("extensions.torbutton.launch_warning", false);
+user_pref("extensions.torbutton.loglevel", 2);
+user_pref("extensions.torbutton.logmethod", 0);
 user_pref("torbrowser.about_torconnect.user_has_ever_clicked_connect", true);
 ${TOR_BROWSER_PREF_END}
 EOF
@@ -1408,6 +1543,58 @@ function tor_browser_config_cmd() {
   write_tor_browser_system_tor_prefs
 }
 
+function browser_start_cmd() {
+  local persist
+  persist=no
+
+  while (($#)); do
+    case "${1,,}" in
+      --persist | --persistent) persist=yes; shift ;;
+      -h | -help | --help) usage; return 0 ;;
+      *) die "unknown browser-start option: $1" ;;
+    esac
+  done
+
+  require_root
+  require_arch_systemd
+  require_cmd tor
+
+  ensure_state_dirs
+  backup_cmd
+  write_tor_config
+  validate_tor_config_or_die
+  start_tor_service "${persist}"
+
+  info "browser-ready Tor is active without the v3 nftables guard"
+}
+
+function tor_browser_doctor_cmd() {
+  (($# == 0)) || die "browser-doctor does not take arguments"
+  require_not_root
+
+  local start_script profile_dir userjs
+  start_script="$(tor_browser_start_script)" \
+    || die "Tor Browser bundle not found; install/run torbrowser-launcher first"
+  profile_dir="$(tor_browser_profile_dir)" \
+    || die "Tor Browser profile not found"
+  userjs="${profile_dir}/user.js"
+
+  printf 'Tor Browser system-Tor doctor\n'
+  printf '=============================\n\n'
+  printf 'start script:       %s\n' "${start_script}"
+  printf 'profile:            %s\n' "${profile_dir}"
+  printf 'profile locked:     %s\n' \
+    "$(print_bool tor_browser_profile_locked "${profile_dir}")"
+  printf 'managed prefs:      %s\n' \
+    "$(print_bool user_file_has_managed_block "${userjs}")"
+  printf 'tor.service active: %s\n' "$(print_bool unit_active "${TOR_SERVICE}")"
+  printf 'SOCKS %s open:       %s\n' \
+    "${TOR_SOCKS_PORT}" "$(print_bool port_listening_tcp "${TOR_SOCKS_PORT}")"
+  printf 'Control %s open:     %s\n' \
+    "${TOR_CONTROL_PORT}" \
+    "$(print_bool port_listening_tcp "${TOR_CONTROL_PORT}")"
+}
+
 function tor_browser_cmd() {
   require_not_root
 
@@ -1416,8 +1603,9 @@ function tor_browser_cmd() {
     || die "Tor Browser bundle not found; install/run torbrowser-launcher first"
 
   if ! unit_active "${TOR_SERVICE}" \
-      || ! port_listening_tcp "${TOR_SOCKS_PORT}"; then
-    die "system Tor is not ready; run: sudo tor-privacy start --killswitch"
+      || ! port_listening_tcp "${TOR_SOCKS_PORT}" \
+      || ! port_listening_tcp "${TOR_CONTROL_PORT}"; then
+    die "system Tor is not browser-ready; run: sudo tor-privacy browser-start"
   fi
 
   write_tor_browser_system_tor_prefs
@@ -1425,8 +1613,13 @@ function tor_browser_cmd() {
   export TOR_SKIP_LAUNCH=1
   export TOR_SOCKS_HOST
   export TOR_SOCKS_PORT
+  export TOR_CONTROL_HOST
+  export TOR_CONTROL_PORT
+  TOR_CONTROL_PASSWD="$(tor_browser_control_password_env)"
+  export TOR_CONTROL_PASSWD
 
   info "launching Tor Browser through system Tor at ${TOR_SOCKS_URL}"
+  info "using Tor control port at ${TOR_CONTROL_URL}"
   exec "${start_script}" "$@"
 }
 
@@ -1643,12 +1836,14 @@ function uninstall_cmd() {
   done
 
   require_root
-  confirm "Remove tor-privacy-v2 managed files and disable managed services?"
+  confirm "Remove tor-privacy-v3 managed files and disable managed services?"
 
   stop_killswitch || true
   run_root systemctl disable --now "${TOR_SERVICE}" >/dev/null 2>&1 || true
   remove_managed_tor_blocks || true
-  run_root rm -f "${NFT_RULES}" "${NFT_UNIT}" "${INSTALL_BIN}" "${TW_BIN}"
+  run_root rm -f \
+    "${NFT_RULES}" "${OLD_V2_NFT_RULES}" "${NFT_UNIT}" \
+    "${INSTALL_BIN}" "${TW_BIN}"
   run_root systemctl daemon-reload
   info "removed tor-privacy managed files"
 
@@ -1689,7 +1884,7 @@ EOF
 function managed_block_count() {
   [[ -r "${TORRC}" ]] || { printf '0'; return 0; }
   grep -Ec \
-    '^(# >>> tor-privacy-v2 managed block >>>|# >>> tor-privacy managed block >>>|# BEGIN managed by tor-research)$' \
+    '^(# >>> tor-privacy-v3 managed block >>>|# >>> tor-privacy-v2 managed block >>>|# >>> tor-privacy managed block >>>|# BEGIN managed by tor-research)$' \
     "${TORRC}" || true
 }
 
@@ -1717,7 +1912,8 @@ Components
   SOCKS ${TOR_SOCKS_PORT} listening:          $(print_bool port_listening_tcp "${TOR_SOCKS_PORT}")
   TransPort ${TOR_TRANS_PORT} listening:      $(print_bool port_listening_tcp "${TOR_TRANS_PORT}")
   DNSPort ${TOR_DNS_PORT} listening:          $(print_bool port_listening_udp "${TOR_DNS_PORT}")
-  v2 nft tables loaded:            $(print_bool nft_tables_loaded)
+  ControlPort ${TOR_CONTROL_PORT} listening:  $(print_bool port_listening_tcp "${TOR_CONTROL_PORT}")
+  v3 nft tables loaded:            $(print_bool nft_tables_loaded)
   nft unit enabled:                $(print_bool unit_enabled tor-privacy-nft.service)
   VPN underlay endpoints:          $(print_vpn_underlay_status)
   NetworkManager MAC config:       $([[ -f "${NM_MAC_CONF}" ]] && printf yes || printf no)
@@ -1725,12 +1921,12 @@ Components
   managed torrc blocks:            $(managed_block_count)
   Tor user:                        $(tor_user 2>/dev/null || printf 'not found')
 
-Ports matching 9040/9050/9053/9051/5353
+Ports matching 9040/9050/9051/9053/5353
 EOF
 
   if have ss; then
     ss -ltnup 2>/dev/null \
-      | awk '/:(9040|9050|9053|9051|5353)[[:space:]]/ { print "  " $0 }' \
+      | awk '/:(9040|9050|9051|9053|5353)[[:space:]]/ { print "  " $0 }' \
       || true
   else
     printf '  ss not available\n'
@@ -1846,9 +2042,13 @@ function doctor_cmd() {
     && report PASS "DNSPort ${TOR_DNS_PORT}" "listening" \
     || report WARN "DNSPort ${TOR_DNS_PORT}" "closed"
 
+  port_listening_tcp "${TOR_CONTROL_PORT}" \
+    && report PASS "ControlPort ${TOR_CONTROL_PORT}" "listening" \
+    || report WARN "ControlPort ${TOR_CONTROL_PORT}" "closed"
+
   nft_tables_loaded \
-    && report PASS "v2 nft tables" "loaded" \
-    || report WARN "v2 nft tables" "not loaded"
+    && report PASS "v3 nft tables" "loaded" \
+    || report WARN "v3 nft tables" "not loaded"
 
   [[ -r "${NFT_RULES}" ]] \
     && report PASS "nft rules file" "${NFT_RULES}" \
@@ -1964,6 +2164,8 @@ function main() {
     vpn-detect) vpn_detect_cmd "$@" ;;
     browser | tor-browser) tor_browser_cmd "$@" ;;
     browser-config | tor-browser-config) tor_browser_config_cmd "$@" ;;
+    browser-start | tor-browser-start) browser_start_cmd "$@" ;;
+    browser-doctor | tor-browser-doctor) tor_browser_doctor_cmd "$@" ;;
     mac-on) enable_mac_randomisation "$@" ;;
     mac-off) disable_mac_randomisation "$@" ;;
     mac-rotate) rotate_mac_now "$@" ;;
