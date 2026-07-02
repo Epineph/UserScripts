@@ -1,0 +1,96 @@
+Below is the fastest, destructive way to get rid of the existing crypto_LUKS
+signature on /dev/nvme0n1p4 and make cryptsetup luksFormat stop complaining.
+
+⸻
+
+1) Make sure the device is not in use
+
+Your screenshot shows Cannot exclusively open ... device is in use.
+That means something is holding /dev/nvme0n1p4 (a dm-crypt mapping, LVM, a
+mount, or swap). Close holders, not the block device path.
+
+# Inspect who holds the partition
+lsblk -o NAME,PATH,TYPE,SIZE,FSTYPE,FSVER,MOUNTPOINTS /dev/nvme0n1p4
+dmsetup ls --tree
+blkid /dev/nvme0n1p4
+
+# If you previously opened it as, e.g., 'cryptroot', close *that* name:
+cryptsetup luksClose cryptroot            # replace with your actual mapper name
+
+# If LVM is active on top, deactivate the VG (adjust name):
+vgchange -an <vgname>
+
+# Unmount anything from it (common during installs):
+umount -R /mnt 2>/dev/null || true
+
+# If it was used as swap:
+swapoff -a
+
+# Inspect who holds the partition
+lsblk -o NAME,PATH,TYPE,SIZE,FSTYPE,FSVER,MOUNTPOINTS /dev/nvme0n1p4
+dmsetup ls --tree
+blkid /dev/nvme0n1p4
+
+# If you previously opened it as, e.g., 'cryptroot', close *that* name:
+cryptsetup luksClose cryptroot            # replace with your actual mapper name
+
+# If LVM is active on top, deactivate the VG (adjust name):
+vgchange -an <vgname>
+
+# Unmount anything from it (common during installs):
+umount -R /mnt 2>/dev/null || true
+
+# If it was used as swap:
+swapoff -a
+
+Common mistake from the photo: cryptsetup close /dev/nvme0n1p4 is wrong.
+You must close the mapper name (e.g., cryptsetup luksClose cryptroot).
+
+⸻
+
+2) Remove the LUKS superblock signature
+
+Pick one of the following. All are destructive.
+
+A. Quick and sufficient for signatures (recommended)
+
+wipefs -a /dev/nvme0n1p4
+
+This removes known on-disk signatures (including crypto_LUKS) so future tools
+won’t detect it.
+
+B. Full discard (fast on NVMe/SSD; wipes all data)
+
+blkdiscard -f /dev/nvme0n1p4
+
+
+This TRIMs the whole partition; everything is gone, including headers.
+
+C. Manually zero the LUKS2 header regions
+LUKS2 keeps metadata at the start and a backup near the end.
+
+# Zero the first 8 MiB (primary metadata area)
+dd if=/dev/zero of=/dev/nvme0n1p4 bs=1M count=8 conv=fdatasync,notrunc
+
+# Zero the last 8 MiB (secondary metadata area)
+size_bytes=$(blockdev --getsize64 /dev/nvme0n1p4)
+seek_mb=$(( size_bytes/1024/1024 - 8 ))
+dd if=/dev/zero of=/dev/nvme0n1p4 bs=1M seek=$seek_mb count=8 conv=fdatasync,notrunc
+
+blkid /dev/nvme0n1p4      # should print nothing (or no TYPE)
+wipefs /dev/nvme0n1p4     # should show no signatures
+cryptsetup isLuks /dev/nvme0n1p4 && echo "still LUKS" || echo "not LUKS"
+
+4) Re-create your LUKS2 container (example)
+
+Once the device is quiet and clean, this will succeed:
+
+cryptsetup luksFormat \
+  --type luks2 \
+  --cipher aes-xts-plain64 --key-size 512 \
+  --hash sha512 \
+  --pbkdf argon2id --iter-time 4000 \
+  --pbkdf-memory 256000 --pbkdf-parallel 4 \
+  --use-random --align-payload 4096 \
+  /dev/nvme0n1p4
+

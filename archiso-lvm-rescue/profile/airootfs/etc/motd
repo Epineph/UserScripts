@@ -1,0 +1,21 @@
+Heini Arch LVM Rescue ISO
+
+This live environment is based on the official Arch Linux releng profile.
+
+Included LVM helpers:
+  /root/lvm-scripts/
+  lvm-math-inspect
+  lvm-move-space-safe
+
+Recommended first checks:
+  lsblk -f
+  lvs -a -o+devices
+  vgs
+  findmnt
+
+For encrypted LVM systems:
+  cryptsetup open /dev/<device> <name>
+  vgchange -ay
+
+For Arch installation guidance:
+  Installation_guide
