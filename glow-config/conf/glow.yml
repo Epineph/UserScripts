@@ -1,0 +1,112 @@
+# ==============================================================================
+# Glow configuration
+# ==============================================================================
+#
+# Location:
+#   ~/.config/glow/glow.yml
+#
+# Open this file:
+#   glow config
+#
+# Verify active configuration:
+#   glow --help
+#
+# CLI flags override these defaults.
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# Rendering
+# ------------------------------------------------------------------------------
+
+# Use Glow's dark Glamour theme explicitly rather than relying on terminal
+# background detection.
+#
+# Alternatives:
+#   auto
+#   light
+#   /path/to/custom-style.json
+#
+style: "dark"
+
+
+# Wrap rendered Markdown at 81 columns.
+#
+# This keeps prose compact enough for comfortable terminal reading while
+# matching the preferred ~81-column convention used elsewhere in the shell
+# environment.
+#
+# Set to 0 to use terminal width dynamically; Glow caps automatic width at
+# 120 columns.
+#
+width: 81
+
+
+# Preserve literal line breaks from the source Markdown.
+#
+# false is generally preferable for prose/documentation because paragraphs
+# reflow naturally to `width`.
+#
+preserveNewLines: false
+
+
+# ------------------------------------------------------------------------------
+# Display mode
+# ------------------------------------------------------------------------------
+
+# Send rendered Markdown through a pager.
+#
+# Glow uses $PAGER when it is defined, otherwise it falls back to:
+#
+#   less -r
+#
+# This is preferable for ordinary documentation reading because output remains
+# scrollable and searchable without entering Glow's full file-browser TUI.
+#
+pager: true
+
+
+# Do not enter the full Glow TUI automatically.
+#
+# Invoke it explicitly when wanted:
+#
+#   glow --tui
+#   glow -t README.md
+#
+# IMPORTANT:
+#   pager: true
+#   tui:   true
+#
+# are mutually exclusive.
+#
+tui: false
+
+
+# ------------------------------------------------------------------------------
+# TUI behaviour
+# ------------------------------------------------------------------------------
+
+# Enable mouse-wheel scrolling when the TUI is used explicitly.
+#
+# Keyboard navigation remains available, so there is little disadvantage to
+# leaving this enabled.
+#
+mouse: true
+
+
+# Hide ignored and hidden/system files by default.
+#
+# This prevents .git/, caches, generated files, etc. from cluttering the file
+# browser. Use `glow --all` when those files are intentionally needed.
+#
+all: false
+
+
+# Keep the normal reading view uncluttered.
+#
+# Line numbers are mainly useful when discussing or debugging a document:
+#
+#   glow --tui --line-numbers README.md
+#   glow -t -l README.md
+#
+showLineNumbers: false
