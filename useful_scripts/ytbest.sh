@@ -2,18 +2,20 @@
 #
 # ytbest - Download yt-dlp's best available video and audio streams.
 #
-# Video-only and audio-only streams are merged without re-encoding. The
-# wrapper ignores yt-dlp configuration files so saved format limits cannot
-# silently select a lower-quality stream.
+# Best streams are muxed without re-encoding. The wrapper ignores yt-dlp
+# configuration files so saved format limits cannot silently select a
+# lower-quality stream.
 
 set -Eeuo pipefail
 
 readonly PROGRAM="${0##*/}"
-readonly VERSION="1.0.0"
+readonly VERSION="1.1.0"
 readonly FORMAT_SELECTOR='bv*+ba/b'
 readonly OUTPUT_TEMPLATE='%(title)s [%(id)s] [%(format_id)s].%(ext)s'
 
 output_dir="$PWD"
+container_mode="mkv"
+container_mode_explicit=0
 list_formats=0
 verbose=0
 declare -a urls=()
@@ -30,19 +32,26 @@ Usage:
 
 Download the best format containing video, adding the best separate audio
 stream when needed. If separate streams are unavailable, use the best combined
-stream. Streams are merged into MKV without re-encoding. No resolution or
-file-size cap is set.
+stream. No resolution or file-size cap is set. The default merge container is
+MKV.
 
 Options:
   -P, --path DIR          Download directory (default: current directory)
+      --mp4               Remux the final file to MP4 without re-encoding
+      --keep-original     Let yt-dlp choose a compatible container
   -F, --list-formats      Show formats yt-dlp can currently access
   -v, --verbose           Show yt-dlp debug details
   -h, --help              Show this help
   -V, --version           Show wrapper version
       --                  Treat all remaining arguments as URLs
 
+MP4 is remuxed without re-encoding. If MP4 cannot contain the selected codecs,
+yt-dlp/ffmpeg will fail rather than silently lower or re-encode the quality.
+
 Examples:
   ytbest 'https://www.youtube.com/watch?v=VIDEO_ID'
+  ytbest --mp4 URL
+  ytbest --keep-original URL
   ytbest --list-formats 'https://www.youtube.com/watch?v=VIDEO_ID'
   ytbest -P "$HOME/Videos" URL
 EOF
@@ -75,6 +84,20 @@ function parse_arguments() {
         ;;
       --path=*)
         output_dir="${1#*=}"
+        shift
+        ;;
+      --mp4)
+        [[ $container_mode_explicit == 0 || $container_mode == mp4 ]] ||
+          die "choose either --mp4 or --keep-original"
+        container_mode="mp4"
+        container_mode_explicit=1
+        shift
+        ;;
+      --keep-original|--keep-container)
+        [[ $container_mode_explicit == 0 || $container_mode == native ]] ||
+          die "choose either --mp4 or --keep-original"
+        container_mode="native"
+        container_mode_explicit=1
         shift
         ;;
       -F|--list-formats)
@@ -131,13 +154,22 @@ function main() {
     --format "$FORMAT_SELECTOR"
     --check-formats
     --abort-on-unavailable-fragments
-    --merge-output-format mkv
     --paths "$output_dir"
     --output "$OUTPUT_TEMPLATE"
     --continue
     --no-overwrites
     --newline
   )
+
+  case "$container_mode" in
+    mkv)
+      cmd+=(--merge-output-format mkv)
+      ;;
+    mp4)
+      cmd+=(--merge-output-format mp4 --remux-video mp4)
+      ;;
+    native) ;;
+  esac
 
   ((verbose)) && cmd+=(--verbose)
   cmd+=(-- "${urls[@]}")
