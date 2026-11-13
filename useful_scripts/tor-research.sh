@@ -53,7 +53,7 @@ function helpout() {
   local pager
   pager="${HELP_PAGER:-cat}"
 
-  cat <<'EOF' | ${pager}
+  cat << 'EOF' | ${pager}
 tor-research - reversible Tor-oriented research mode for Arch Linux
 
 USAGE
@@ -219,7 +219,7 @@ function confirm() {
   local reply
   read -r -p "${prompt} [y/N] " reply
   case "${reply,,}" in
-    y|yes) return 0 ;;
+    y | yes) return 0 ;;
     *) die "aborted by user" ;;
   esac
 }
@@ -233,7 +233,7 @@ function ensure_dirs() {
 }
 
 function have_cmd() {
-  command -v "$1" >/dev/null 2>&1
+  command -v "$1" > /dev/null 2>&1
 }
 
 function require_cmd() {
@@ -287,12 +287,12 @@ function pacman_install() {
 # ---------------------------------------------------------------------------
 
 function tor_user() {
-  if getent passwd tor >/dev/null 2>&1; then
+  if getent passwd tor > /dev/null 2>&1; then
     printf 'tor\n'
     return 0
   fi
 
-  if getent passwd toranon >/dev/null 2>&1; then
+  if getent passwd toranon > /dev/null 2>&1; then
     printf 'toranon\n'
     return 0
   fi
@@ -307,7 +307,7 @@ function tor_uid() {
 }
 
 function tor_service_name() {
-  if systemctl list-unit-files tor.service >/dev/null 2>&1; then
+  if systemctl list-unit-files tor.service > /dev/null 2>&1; then
     printf 'tor.service\n'
     return 0
   fi
@@ -317,19 +317,19 @@ function tor_service_name() {
 
 function socks_is_open() {
   if have_cmd ss; then
-    ss -H -ltn "sport = :${TOR_SOCKS_PORT}" 2>/dev/null \
+    ss -H -ltn "sport = :${TOR_SOCKS_PORT}" 2> /dev/null \
       | grep -q "${TOR_SOCKS_PORT}"
     return
   fi
 
   timeout 2 bash -c \
-    ":</dev/tcp/${TOR_SOCKS_HOST}/${TOR_SOCKS_PORT}" >/dev/null 2>&1
+    ":</dev/tcp/${TOR_SOCKS_HOST}/${TOR_SOCKS_PORT}" > /dev/null 2>&1
 }
 
 function nft_table_exists() {
   have_cmd nft || return 1
   run_root nft list table "$NFT_TABLE_FAMILY" "$NFT_TABLE_NAME" \
-    >/dev/null 2>&1
+    > /dev/null 2>&1
 }
 
 # ---------------------------------------------------------------------------
@@ -388,7 +388,7 @@ function ensure_torrc_socks() {
 
   local block
   block="$(
-    cat <<EOF
+    cat << EOF
 ${MANAGED_BEGIN}
 SocksPort ${TOR_SOCKS_HOST}:${TOR_SOCKS_PORT}
 ClientOnly 1
@@ -403,7 +403,7 @@ EOF
     return 0
   fi
 
-  printf '\n%s\n' "$block" | as_root tee -a "$torrc" >/dev/null
+  printf '\n%s\n' "$block" | as_root tee -a "$torrc" > /dev/null
   info "updated: ${torrc}"
 }
 
@@ -493,7 +493,10 @@ function strict_on_cmd() {
 
   while (($#)); do
     case "$1" in
-      --block-lan) block_lan=true; shift ;;
+      --block-lan)
+        block_lan=true
+        shift
+        ;;
       *) die "unknown strict-on option: $1" ;;
     esac
   done
@@ -523,7 +526,7 @@ function strict_on_cmd() {
 
   local ruleset
   ruleset="$(
-    cat <<EOF
+    cat << EOF
 table inet ${NFT_TABLE_NAME} {
   set local4 {
     type ipv4_addr
@@ -601,7 +604,10 @@ function revert_cmd() {
 
   while (($#)); do
     case "$1" in
-      --keep-tor-running) keep_tor_running=true; shift ;;
+      --keep-tor-running)
+        keep_tor_running=true
+        shift
+        ;;
       *) die "unknown revert option: $1" ;;
     esac
   done
@@ -632,7 +638,7 @@ function revert_cmd() {
 # ---------------------------------------------------------------------------
 
 function env_cmd() {
-  cat <<EOF
+  cat << EOF
 export ALL_PROXY='${TOR_SOCKS_URL}'
 export HTTP_PROXY='${TOR_SOCKS_URL}'
 export HTTPS_PROXY='${TOR_SOCKS_URL}'
@@ -647,7 +653,7 @@ EOF
 }
 
 function shell_cmd() {
-  start_cmd >/dev/null
+  start_cmd > /dev/null
   info "Starting proxy-environment shell."
   info "Use 'exit' to leave it. Use strict-on for stronger leak prevention."
 
@@ -660,7 +666,7 @@ function shell_cmd() {
 function run_torsocks_cmd() {
   (($# > 0)) || die "missing command after 'run'"
 
-  start_cmd >/dev/null
+  start_cmd > /dev/null
   require_cmd torsocks
 
   TORSOCKS_LOG_LEVEL=1 torsocks "$@"
@@ -669,7 +675,7 @@ function run_torsocks_cmd() {
 function curl_cmd() {
   (($# > 0)) || die "missing URL for curl"
 
-  start_cmd >/dev/null
+  start_cmd > /dev/null
   require_cmd curl
 
   curl \
@@ -682,12 +688,12 @@ function curl_cmd() {
 function wget_cmd() {
   (($# > 0)) || die "missing URL for wget"
 
-  start_cmd >/dev/null
+  start_cmd > /dev/null
   require_cmd wget
 
   ALL_PROXY="$TOR_SOCKS_URL" \
-  HTTPS_PROXY="$TOR_SOCKS_URL" \
-  HTTP_PROXY="$TOR_SOCKS_URL" \
+    HTTPS_PROXY="$TOR_SOCKS_URL" \
+    HTTP_PROXY="$TOR_SOCKS_URL" \
     wget "$@"
 }
 
@@ -701,7 +707,7 @@ function git_proxy_args() {
 function git_clone_cmd() {
   (($# >= 1)) || die "missing repository URL"
 
-  start_cmd >/dev/null
+  start_cmd > /dev/null
   require_cmd git
 
   git \
@@ -714,7 +720,7 @@ function git_clone_cmd() {
 function git_ls_cmd() {
   (($# >= 1)) || die "missing repository URL"
 
-  start_cmd >/dev/null
+  start_cmd > /dev/null
   require_cmd git
 
   git \
@@ -729,7 +735,7 @@ function git_ls_cmd() {
 # ---------------------------------------------------------------------------
 
 function check_cmd() {
-  start_cmd >/dev/null
+  start_cmd > /dev/null
   require_cmd curl
 
   info "Checking Tor route via Tor Project endpoint..."
@@ -754,7 +760,7 @@ function leak_test_cmd() {
 
   info ""
   info "2. Direct clearnet check should fail when strict mode is enabled:"
-  if curl --silent --max-time 7 https://api.ipify.org >/tmp/tor-research.direct 2>/dev/null; then
+  if curl --silent --max-time 7 https://api.ipify.org > /tmp/tor-research.direct 2> /dev/null; then
     warn "Direct public clearnet request succeeded."
     warn "If you want a stronger guard, run: tor-research strict-on"
     warn "Direct IP was: $(cat /tmp/tor-research.direct)"
@@ -768,7 +774,7 @@ function leak_test_cmd() {
 }
 
 function browser_cmd() {
-  cat <<'EOF'
+  cat << 'EOF'
 Tor Browser guidance
 
 For websites, use Tor Browser rather than ordinary Firefox/Chromium with a
@@ -794,16 +800,16 @@ EOF
   for launcher in "${launchers[@]}"; do
     if have_cmd "$launcher"; then
       info "launching: ${launcher}"
-      run_cmd "$launcher" >/dev/null 2>&1 &
+      run_cmd "$launcher" > /dev/null 2>&1 &
       return 0
     fi
   done
 
   if have_cmd flatpak; then
     if flatpak info com.github.micahflee.torbrowser-launcher \
-      >/dev/null 2>&1; then
+      > /dev/null 2>&1; then
       run_cmd flatpak run com.github.micahflee.torbrowser-launcher \
-        >/dev/null 2>&1 &
+        > /dev/null 2>&1 &
       return 0
     fi
   fi
@@ -844,7 +850,7 @@ function status_cmd() {
     info "  strict mode:    disabled"
   fi
 
-  if tor_user >/dev/null 2>&1; then
+  if tor_user > /dev/null 2>&1; then
     info "  Tor user:       $(tor_user) uid=$(tor_uid)"
   else
     info "  Tor user:       not found"
@@ -875,7 +881,7 @@ function doctor_cmd() {
     fi
   done
 
-  if tor_user >/dev/null 2>&1; then
+  if tor_user > /dev/null 2>&1; then
     info "  Tor user:       $(tor_user) uid=$(tor_uid)"
   else
     warn "Tor user missing. Try: tor-research install"
@@ -917,19 +923,19 @@ function doctor_cmd() {
 function parse_global_options() {
   while (($#)); do
     case "$1" in
-      -n|--dry-run)
+      -n | --dry-run)
         DRY_RUN=true
         shift
         ;;
-      -y|--yes)
+      -y | --yes)
         ASSUME_YES=true
         shift
         ;;
-      -v|--verbose)
+      -v | --verbose)
         VERBOSE=true
         shift
         ;;
-      -h|--help)
+      -h | --help)
         helpout
         exit 0
         ;;
@@ -962,7 +968,7 @@ function main() {
   shift || true
 
   case "$command" in
-    help|--help|-h) helpout ;;
+    help | --help | -h) helpout ;;
     install) install_cmd "$@" ;;
     start) start_cmd "$@" ;;
     stop) stop_cmd "$@" ;;

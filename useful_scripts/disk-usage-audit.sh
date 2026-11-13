@@ -47,24 +47,18 @@ BAT_OPTS=(
 	--theme="gruvbox-dark"
 	--squeeze-blank
 	--squeeze-limit="2"
-	--terminal-width="-1"
 	--tabs="2"
 	--paging="never"
-	--chop-long-lines
 )
 
 function show_help() {
 	local viewer="cat"
-	if _have helpout; then
-		viewer="helpout"
-	elif _have batwrap; then
-		viewer="batwrap"
-	elif _have bat; then
+	if _have bat; then
 		viewer="bat"
 	fi
 
 	if [[ "${viewer}" == "bat" ]]; then
-		cat <<'EOF' | bat "${BAT_OPTS[@]}" -l markdown
+		cat <<'EOF' | bat -l markdown --paging="never"
 # disk-usage-audit — Comprehensive disk usage report
 
 ## Synopsis

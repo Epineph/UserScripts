@@ -16,13 +16,19 @@ countries=(
 	Finland
 	Germany
 	Netherlands
+	Poland
+	France
+	Spain
+	United Kingdom
+	Ukraine
+
 )
 
 # Maximum allowed mirror age in hours.
 max_age_hours=12
 
 # How many mirrors to keep in the final mirrorlist.
-mirrors_to_keep=12
+mirrors_to_keep=60
 
 # ---------------------------------------------------------------------------
 # Helper functions
@@ -67,9 +73,9 @@ function main() {
 		--sort rate \
 		--number "$mirrors_to_keep" \
 		--connection-timeout 5 \
-		--download-timeout 10 \
+		--download-timeout 5 \
 		--cache-timeout 0 \
-		--threads 4 \
+		--threads 8 \
 		--save /etc/pacman.d/mirrorlist
 }
 
