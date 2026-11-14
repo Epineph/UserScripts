@@ -1,5 +1,23 @@
 # UserScripts
 
+## Find and encrypt files: `find-encrypt.sh`
+
+[`find-encrypt.sh`](find-encrypt.sh) finds files across multiple paths, filters
+by extensions or filename globs, and optionally uses fzf for selection. It
+creates a verified encrypted 7z archive, with optional preserved paths and
+explicit source deletion/pruning. See the [complete guide](docs/find-encrypt.md)
+or `./find-encrypt.sh --help` for options and examples.
+
+```bash
+# Preview multiple file types from multiple roots.
+./find-encrypt.sh -t ~/Downloads /mnt/images -e iso,img \
+  --exclude ~/Downloads/old --keep-paths -o images --dry-run
+
+# Choose the files interactively and enter a hidden passphrase.
+./find-encrypt.sh -t ~/Downloads /mnt/images -e iso,img \
+  --interactive --keep-paths -o images
+```
+
 ## YouTube downloads: `yt-best`
 
 [`yt-best.sh`](yt-best.sh) downloads yt-dlp's best available video and audio,

@@ -104,6 +104,8 @@ def tool_directory(tmp_path, extra=None):
         (directory / name).symlink_to(executable)
     for name, source in (extra or {}).items():
         executable = directory / name
+        if executable.is_symlink():
+            executable.unlink()
         executable.write_text(f"#!{sys.executable}\n" + source)
         executable.chmod(0o755)
     return directory
@@ -192,6 +194,7 @@ def test_exclusions_are_anchored_and_literal_paths_are_not_globs(run_cli, tmp_pa
         "nested/old",
         "-E",
         "cache*",
+        "--keep-paths",
         "--dry-run",
     )
     assert selected_paths(result) == expected
@@ -353,7 +356,19 @@ if args[0] == os.environ.get('FAIL_COMMAND'):
 if args[0] == 't' and os.environ.get('RACE_OUTPUT'):
     Path(os.environ['RACE_OUTPUT']).write_bytes(b'concurrent owner')
 if args[0] == 't' and os.environ.get('MUTATE_SOURCE'):
-    Path(os.environ['MUTATE_SOURCE']).write_bytes(b'changed while archiving')
+    source = Path(os.environ['MUTATE_SOURCE'])
+    mode = os.environ.get('SOURCE_CHANGE', 'modify')
+    if mode == 'modify':
+        source.write_bytes(b'changed while archiving')
+    elif mode == 'replace':
+        previous = source.stat()
+        replacement = source.with_suffix('.replacement')
+        replacement.write_bytes(source.read_bytes())
+        os.utime(replacement, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+        replacement.replace(source)
+    else:
+        source.unlink()
+        source.symlink_to(os.environ['OUTSIDE_SOURCE'])
 """
 
 
@@ -589,9 +604,11 @@ def test_pruning_requires_source_deletion_and_dry_run_does_not_delete(run_cli, t
     assert source.parent.is_dir()
 
 
-def test_changed_source_retained_after_verified_archive_is_published(run_cli, tmp_path):
+@pytest.mark.parametrize("change", ["modify", "replace", "symlink"])
+def test_changed_source_retained_after_verified_archive_is_published(run_cli, tmp_path, change):
     directory = tool_directory(tmp_path, {"7z": FAKE_7Z})
     source = write_file(tmp_path / "source" / "file.txt")
+    outside = write_file(tmp_path / "outside.txt", "not selected")
     output = tmp_path / "archive.7z"
     result = run_cli(
         source,
@@ -605,10 +622,18 @@ def test_changed_source_retained_after_verified_archive_is_published(run_cli, tm
             "SEVEN_LOG": str(tmp_path / "7z.jsonl"),
             "EXPECTED_PASSWORD": PASSWORD,
             "MUTATE_SOURCE": str(source),
+            "SOURCE_CHANGE": change,
+            "OUTSIDE_SOURCE": str(outside),
         },
     )
     assert result.returncode == 1
-    assert source.read_bytes() == b"changed while archiving"
+    if change == "modify":
+        assert source.read_bytes() == b"changed while archiving"
+    elif change == "replace":
+        assert source.read_bytes() == b"fixture data"
+    else:
+        assert source.is_symlink()
+        assert outside.read_text() == "not selected"
     assert output.read_bytes() == b"temporary archive"
 
 
@@ -682,3 +707,124 @@ def test_eof_cannot_reuse_a_password_inherited_from_environment(run_cli, tmp_pat
     assert result.returncode == 1
     assert not log.exists()
     assert not (tmp_path / "missing").exists()
+
+
+@pytest.mark.parametrize(
+    "target_kind", ["trailing-directory", "ancestor-directory", "ancestor-file"]
+)
+def test_symlink_roots_and_ancestors_are_refused(run_cli, tmp_path, target_kind):
+    original = write_file(tmp_path / "original" / "nested" / "file.txt", "original content")
+    link = tmp_path / "linked"
+    link.symlink_to(tmp_path / "original", target_is_directory=True)
+    targets = {
+        "trailing-directory": str(link) + "/",
+        "ancestor-directory": str(link / "nested"),
+        "ancestor-file": str(link / "nested" / "file.txt"),
+    }
+    result = run_cli(
+        targets[target_kind], "--dry-run", "--delete-source-files", "-o", "missing/archive"
+    )
+    assert result.returncode == 1
+    assert "symlink" in result.stderr.lower()
+    assert original.read_text() == "original content"
+    assert link.is_symlink()
+    assert not (tmp_path / "missing").exists()
+
+
+@pytest.mark.parametrize("excluded_component", ["cache{1,2}", "["])
+def test_literal_exclusion_components_agree_between_backends(
+    run_cli, tmp_path, backend, excluded_component
+):
+    source = tmp_path / "source"
+    expected = {
+        write_file(source / "cache1" / "file.iso"),
+        write_file(source / "cache2" / "file.iso"),
+    }
+    write_file(source / excluded_component / "file.iso")
+    result = run_cli(
+        source,
+        "--backend",
+        backend,
+        "--exclude",
+        excluded_component,
+        "--keep-paths",
+        "--dry-run",
+    )
+    assert selected_paths(result) == expected
+
+
+MOVING_MKDIR = """
+import os, sys
+from pathlib import Path
+source = Path(os.environ['MOVE_SOURCE'])
+if source.exists():
+    source.rename(os.environ['MOVED_SOURCE'])
+os.execv(os.environ['REAL_MKDIR'], ['mkdir', *sys.argv[1:]])
+"""
+
+
+def test_missing_source_base_never_falls_back_to_callers_working_directory(run_cli, tmp_path):
+    source = write_file(tmp_path / "source" / "file.txt", "selected content")
+    unrelated = write_file(tmp_path / "file.txt", "unrelated working-directory content")
+    moved = tmp_path / "moved-source"
+    output = tmp_path / "archive.7z"
+    log = tmp_path / "7z.jsonl"
+    directory = tool_directory(tmp_path, {"7z": FAKE_7Z, "mkdir": MOVING_MKDIR})
+    result = run_cli(
+        source.parent,
+        "--keep-paths",
+        "--password-stdin",
+        "-o",
+        output,
+        data=PASSWORD + "\n",
+        environment={
+            "PATH": str(directory),
+            "SEVEN_LOG": str(log),
+            "EXPECTED_PASSWORD": PASSWORD,
+            "MOVE_SOURCE": str(source.parent),
+            "MOVED_SOURCE": str(moved),
+            "REAL_MKDIR": shutil.which("mkdir"),
+        },
+    )
+    assert result.returncode == 1
+    assert not output.exists()
+    assert not log.exists(), "7z must not run after changing to the source base fails"
+    assert (moved / "file.txt").read_text() == "selected content"
+    assert unrelated.read_text() == "unrelated working-directory content"
+
+
+@pytest.mark.skipif(SEVEN_ZIP is None, reason="7-Zip is unavailable")
+def test_selected_hardlinks_are_deleted_but_unselected_alias_is_retained(run_cli, tmp_path):
+    first = write_file(tmp_path / "source" / "first.txt", "shared hardlink content")
+    second = first.with_name("second.txt")
+    unselected = first.with_name("unselected.txt")
+    os.link(first, second)
+    os.link(first, unselected)
+    output = tmp_path / "archive.7z"
+    result = run_cli(
+        first,
+        second,
+        "--keep-paths",
+        "--delete-source-files",
+        "--password-stdin",
+        "-o",
+        output,
+        data=PASSWORD + "\n",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not first.exists()
+    assert not second.exists()
+    assert unselected.read_text() == "shared hardlink content"
+    assert unselected.stat().st_nlink == 1
+    destination = tmp_path / "restored"
+    extracted = subprocess.run(
+        [SEVEN_ZIP, "x", str(output), "-o" + str(destination)],
+        input=PASSWORD + "\n",
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    assert extracted.returncode == 0, extracted.stderr
+    assert {path.name for path in destination.iterdir()} == {"first.txt", "second.txt"}
+    assert all(path.read_text() == "shared hardlink content" for path in destination.iterdir())

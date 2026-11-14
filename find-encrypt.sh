@@ -7,9 +7,10 @@ set -Eeuo pipefail
 umask 077
 
 readonly PROGRAM="${0##*/}"
-declare -a roots=() extensions=() globs=() excludes=() selected=()
+declare -a roots=() boundaries=() extensions=() globs=() excludes=() selected=()
 declare -A seen=()
-declare -A file_states=() directory_states=()
+declare -A file_states=() directory_states=() prune_candidates=()
+declare -A inode_last=() inode_original=() inode_expected=()
 output=""
 archive_name=""
 backend="auto"
@@ -40,8 +41,8 @@ Usage: find-encrypt.sh [OPTIONS] [PATH ...]
 
 Find files recursively and create one password-protected .7z archive, including
 encrypted filenames. Sources are retained unless --delete-source-files is set.
-PATH can be a directory or a file;
-multiple paths are combined and duplicate paths are removed. Default path: .
+PATH can be a directory or a file. Multiple paths are combined and duplicate
+paths are removed. Default path: . (no arguments displays this help).
 
 Selection:
   -e, --extension TYPES  Extensions, repeated or comma-separated (OR matching)
@@ -90,16 +91,79 @@ Naming:
   --output backup.7z --name other    -> error, exit status 1
   Default name: encrypted-files.7z. Existing archives are never overwritten.
 
-Examples:
+Examples (quote paths with spaces and all glob patterns):
+  # Preview ISO and IMG files from two locations
   ./find-encrypt.sh ~/Downloads /mnt/images -e iso,img -o images --dry-run
+
+  # Multiple paths with -t; repeated extensions mean the same as iso,img
+  ./find-encrypt.sh -t ~/Downloads /mnt/images -e iso -e img -o images
+
+  # Repeated targets; file paths containing commas stay intact
+  ./find-encrypt.sh -t './project one' -t './notes,final.txt' -o selected
+
+  # Choose files in fzf, then enter and confirm the hidden passphrase
   ./find-encrypt.sh ~/Downloads /mnt/images -e iso -e img -i -p -o images
+
+  # Combine file types (OR) with filename globs (OR); families use AND
   ./find-encrypt.sh ~/Documents -e pdf,docx -g '*report*' -o reports
+  ./find-encrypt.sh ~/Documents -g '*report*' -g '*invoice*' -o documents
+
+  # Exact filenames or compound extensions
+  ./find-encrypt.sh ~/Work -g 'results.csv' --keep-paths -o results
+  ./find-encrypt.sh ~/Backups -e tar.gz,tar.zst -o backups -l 0
+
+  # Absolute exclusions affect only that path; component globs match anywhere
   ./find-encrypt.sh ~/Downloads -e iso --exclude ~/Downloads/old -o images
   ./find-encrypt.sh ~/Documents -x .git -x 'cache*' -i -o /safe/ -n documents
+
+  # A relative path is anchored to each root (./old differs from old)
+  ./find-encrypt.sh -t ~/One ~/Two -x ./old -x cache/temp -o selected
+
+  # Direct files; output name alone or a full output path
   ./find-encrypt.sh ./one.txt ./two.txt --name selected
+  ./find-encrypt.sh ./one.txt -o /mnt/backup/selected
+  ./find-encrypt.sh ./one.txt -o selected.7z --name selected
+
+  # Preserve paths; otherwise every selected file is at the archive top level
   ./find-encrypt.sh -t ~/Docs ~/Pictures --keep-paths -o personal
+  ./find-encrypt.sh ~/Downloads -e iso --flatten -o images
+
+  # Include hidden files and force the find fallback; print extra details
+  ./find-encrypt.sh ~/Work --hidden --backend find --keep-paths -v -o work
+
+  # Preview cleanup first; remove --dry-run to perform the displayed action
   ./find-encrypt.sh ~/Exports -e csv -o exports --keep-paths \
     --delete-source-files --prune-empty-dirs --dry-run
+
+  # Interactive selection limits deletion to the files selected in fzf
+  ./find-encrypt.sh ~/Exports -e csv -i -o exports --delete-source-files
+
+  # Automation: supply a password from a protected source, never as an argument
+  ./find-encrypt.sh ~/Exports -e csv -o exports --password-stdin \
+    < /secure/archive-password.txt
+
+  # Silent operation also suppresses errors; inspect the command's exit status
+  ./find-encrypt.sh ~/Exports -e csv -o exports --password-stdin --silent \
+    < /secure/archive-password.txt
+
+  # A filename starting with a dash, and restoring stored paths
+  ./find-encrypt.sh -o selected -- ./-report.txt
+  7z x selected.7z -o./restored
+
+Layout and cleanup:
+  With one directory, --keep-paths stores paths beneath that directory. With
+  multiple roots/files, it uses their common directory (shown as Source base).
+  Flat mode refuses duplicate filenames rather than renaming or losing files.
+  Source deletion happens only after 7z creation, 7z testing, and publication
+  all succeed. Changed/replaced files are retained; incomplete cleanup returns
+  nonzero while keeping the verified archive. Pruning only visits parents of
+  deleted files, never search roots or parents of explicitly supplied files.
+  Deletion is ordinary unlinking, not secure erasure. This is not a filesystem
+  snapshot: use stable source trees, especially when requesting deletion.
+
+Exit status:
+  0 = success (also help/dry-run); 1 = validation/archive/cleanup failure;
+  130 = interrupted or fzf cancelled. Other tool/signal failures can be nonzero.
 
 Requires Bash 4+, GNU coreutils, iconv, and 7z/7zz/7za. fd is optional; find
 is the fallback. fzf is required only with -i. No sudo is invoked. Extensions
@@ -160,11 +224,15 @@ function parse_args() {
       -e | --extension | --filetype)
         require_value "$@"
         types="$2"
+        [[ "$types" != *$'\n'* && "$types" != *$'\r'* ]] ||
+          die "Extensions cannot contain CR/LF."
         [[ "$types" != ,* && "$types" != *, && "$types" != *,,* ]] ||
           die "Empty extension in '$types'."
         local -a parts=()
         IFS=, read -r -a parts <<<"$types"
         for extension in "${parts[@]}"; do
+          extension="${extension#"${extension%%[![:space:]]*}"}"
+          extension="${extension%"${extension##*[![:space:]]}"}"
           extension="${extension#.}"
           [[ -n "$extension" && "$extension" != *[/\*\?\[]* ]] ||
             die "Use literal extensions, e.g. -e iso,img or -e tar.gz."
@@ -246,8 +314,14 @@ function parse_args() {
         prune_empty=1
         shift
         ;;
-      -v | --verbose) verbose=1; shift ;;
-      -s | --silent) silent=1; shift ;;
+      -v | --verbose)
+        verbose=1
+        shift
+        ;;
+      -s | --silent)
+        silent=1
+        shift
+        ;;
       -p | --passphrase | --password | --encrypt) shift ;;
       -h | --help)
         usage
@@ -268,10 +342,10 @@ function parse_args() {
     auto | fd | find) ;;
     *) die "--backend must be auto, fd, or find." ;;
   esac
-  ((!prune_empty || delete_sources)) ||
+  ((! prune_empty || delete_sources)) ||
     die "--prune-empty-dirs requires --delete-source-files."
-  ((!silent || !interactive)) || die "--silent cannot be used with fzf."
-  ((!silent || dry_run || password_stdin)) ||
+  ((! silent || ! interactive)) || die "--silent cannot be used with fzf."
+  ((! silent || dry_run || password_stdin)) ||
     die "--silent requires --password-stdin for encryption."
 }
 
@@ -304,7 +378,7 @@ function normalize_name() {
 }
 
 function resolve_paths() {
-  local path base index name="" parent
+  local path base index name="" parent resolved
   if [[ -n "$archive_name" ]]; then
     normalize_name "$archive_name"
     name="$REPLY"
@@ -335,11 +409,16 @@ function resolve_paths() {
     [[ ! -L "$path" ]] || die "Symlink input is not supported: $path"
     [[ -d "$path" || -f "$path" ]] || die "Not a file/directory: $path"
     canonical_path -e "$path"
-    path="$REPLY"
+    resolved="$REPLY"
+    canonical_path -ms "$path"
+    [[ "$resolved" == "$REPLY" ]] ||
+      die "Symlink input or ancestor is not supported: $path"
+    path="$resolved"
     roots[index]="$path"
     base="$path"
     [[ -d "$path" ]] || base="${path%/*}"
     base="${base:-/}"
+    boundaries+=("$base")
     if [[ -z "$source_base" ]]; then
       source_base="$base"
     else
@@ -360,7 +439,7 @@ function resolve_paths() {
       [[ -n "$path" && "$path" != .. && "$path" != ../* &&
         "$path" != */../* && "$path" != */.. ]] ||
         die "Relative exclusions must stay inside each search root."
-      excludes[index]="$path"
+      excludes[index]="./$path"
     fi
   done
 }
@@ -402,11 +481,15 @@ function dependencies() {
 # ---------------------------------------------------------------------------
 
 function escape_glob() {
-  REPLY="${1//\\/\\\\}"
-  REPLY="${REPLY//\*/\\*}"
-  REPLY="${REPLY//\?/\\?}"
-  REPLY="${REPLY//\[/\\[}"
-  REPLY="${REPLY//\]/\\]}"
+  local character index
+  REPLY=""
+  for ((index = 0; index < ${#1}; index++)); do
+    character="${1:index:1}"
+    case "$character" in
+      \\ | '*' | '?' | '[' | ']' | '{' | '}') REPLY+="\\" ;;
+    esac
+    REPLY+="$character"
+  done
 }
 
 function excluded() {
@@ -416,6 +499,7 @@ function excluded() {
       [[ "$path" != "$pattern" && "$path" != "${pattern%/}/"* ]] ||
         return 0
     elif [[ "$pattern" == */* ]]; then
+      pattern="${pattern#./}"
       [[ "$relative" != "$pattern" && "$relative" != "$pattern/"* ]] ||
         return 0
     else
@@ -486,6 +570,7 @@ function discover_root() {
         escape_glob "$pattern"
         prune+=(-path "$REPLY" -o)
       elif [[ "$pattern" == */* ]]; then
+        pattern="${pattern#./}"
         escape_glob "$pattern"
         relative="/$REPLY"
         escape_glob "${root%/}/$pattern"
@@ -496,6 +581,11 @@ function discover_root() {
         [[ "$relative" != '!'* && "$relative" != '#'* ]] ||
           relative="\\$relative"
         prune+=(-name "$pattern" -o)
+        # fd's globset grammar extends shell globs (e.g. brace alternation).
+        # Let the shared matcher handle patterns without a safe translation.
+        if [[ "$backend" == fd && "$pattern" == *[\[\]{}\\]* ]]; then
+          continue
+        fi
       fi
       [[ "$backend" != fd ]] || command+=(--exclude "$relative")
     done
@@ -576,7 +666,7 @@ function select_files() {
 # ---------------------------------------------------------------------------
 
 function prepare_list() {
-  local path relative
+  local path relative entry state key
   : >"$work_dir/files.txt"
   for path in "${selected[@]}"; do
     [[ -f "$path" && ! -L "$path" && -r "$path" ]] ||
@@ -584,18 +674,155 @@ function prepare_list() {
     canonical_path -e "$path"
     [[ "$path" == "$REPLY" ]] || die "Selected path changed: $path"
     relative="${path#"${source_base%/}/"}"
-    [[ "$relative" != *$'\n'* && "$relative" != *$'\r'* ]] ||
+    entry="$path"
+    ((keep_paths == 0)) || entry="$relative"
+    [[ "$entry" != *$'\n'* && "$entry" != *$'\r'* ]] ||
       die "7z list files cannot represent a filename containing CR/LF."
-    # Outer quotes preserve leading/trailing whitespace. Paths stay relative
-    # without './', which 7z otherwise strips along with parent directories.
-    printf '"%s"\n' "$relative" >>"$work_dir/files.txt"
+    # Absolute list entries produce basenames; relative entries keep paths.
+    # Outer quotes preserve leading/trailing whitespace in both layouts.
+    printf '"%s"\n' "$entry" >>"$work_dir/files.txt"
+    if ((delete_sources)); then
+      state="$(stat -c '%d:%i:%f:%u:%g:%s:%y|%h|%z' -- "$path")" ||
+        die "Cannot snapshot selected file: $path"
+      file_states["$path"]="$state"
+      key="${state#*:}"
+      key="${state%%:*}:${key%%:*}"
+      inode_last["$key"]="$path"
+      if [[ -z "${inode_original["$key"]:-}" ]]; then
+        inode_original["$key"]="$state"
+        inode_expected["$key"]="$state"
+      fi
+    fi
+    if ((prune_empty)); then record_parents "$path"; fi
   done
   iconv -f UTF-8 -t UTF-8 "$work_dir/files.txt" >/dev/null ||
     die "Selected filenames must be valid UTF-8 for 7z list files."
 }
 
+function validate_layout() {
+  local path name
+  local -A names=()
+  if ((! keep_paths)); then
+    for path in "${selected[@]}"; do
+      name="${path##*/}"
+      [[ -z "${names["$name"]:-}" ]] ||
+        die "Duplicate basename '$name'; use --keep-paths."
+      names["$name"]=1
+    done
+  fi
+}
+
+function record_parents() {
+  local path="$1" boundary="$source_base" root parent
+  # Keep every named search root; for explicit files keep their parent too.
+  for root in "${boundaries[@]}"; do
+    if [[ "$path" == "${root%/}/"* ]] &&
+      ((${#root} > ${#boundary})); then
+      boundary="$root"
+    fi
+  done
+  parent="${path%/*}"
+  while [[ -n "$parent" && "$parent" != / && "$parent" != "$boundary" ]]; do
+    directory_states["$parent"]="$(stat -c '%d:%i:%f' -- "$parent")" ||
+      die "Cannot snapshot source directory: $parent"
+    parent="${parent%/*}"
+  done
+}
+
+function unchanged_source() {
+  local path="$1" current resolved key state="${file_states["$1"]}"
+  [[ -f "$path" && ! -L "$path" ]] || return 1
+  IFS= read -r -d '' resolved < <(realpath -ez -- "$path" 2>/dev/null) ||
+    return 1
+  [[ "$resolved" == "$path" ]] || return 1
+  current="$(stat -c '%d:%i:%f:%u:%g:%s:%y|%h|%z' -- "$path" 2>/dev/null)" ||
+    return 1
+  key="${state#*:}"
+  key="${state%%:*}:${key%%:*}"
+  [[ "$state" == "${inode_original["$key"]}" &&
+    "$current" == "${inode_expected["$key"]}" ]]
+}
+
+function refresh_link_state() {
+  local path="$1" key state="${file_states["$1"]}" last current links old_links
+  key="${state#*:}"
+  key="${state%%:*}:${key%%:*}"
+  last="${inode_last["$key"]}"
+  [[ "$last" != "$path" && -f "$last" && ! -L "$last" ]] || return 0
+  state="${inode_expected["$key"]}"
+  current="$(stat -c '%d:%i:%f:%u:%g:%s:%y|%h|%z' -- "$last")" || return 0
+  links="${current#*|}"
+  links="${links%%|*}"
+  old_links="${state#*|}"
+  old_links="${old_links%%|*}"
+  # Unlinking one hardlink updates the shared ctime and link count. Accept
+  # exactly that change; size, mtime, identity, owner and mode must still match.
+  if [[ "${state%%|*}" == "${current%%|*}" ]] &&
+    ((links + 1 == old_links)); then
+    inode_expected["$key"]="$current"
+  fi
+}
+
+function cleanup_sources() {
+  local path parent current resolved failed=0 deleted=0 pruned=0
+  for path in "${selected[@]}"; do
+    if ! unchanged_source "$path"; then
+      printf 'Retained changed or unavailable source: %q\n' "$path" >&2
+      failed=1
+      continue
+    fi
+    if ! rm -- "$path"; then
+      printf 'Could not delete source: %q\n' "$path" >&2
+      failed=1
+      continue
+    fi
+    refresh_link_state "$path"
+    deleted=$((deleted + 1))
+    if ((verbose)); then printf 'Deleted source: %q\n' "$path" >&2; fi
+    if ((prune_empty)); then
+      parent="${path%/*}"
+      while [[ -n "${directory_states["$parent"]:-}" ]]; do
+        prune_candidates["$parent"]=1
+        parent="${parent%/*}"
+        [[ -n "$parent" ]] || break
+      done
+    fi
+  done
+  printf 'Deleted %s selected source files.\n' "$deleted"
+  if ((prune_empty && ${#prune_candidates[@]})); then
+    # Reverse path order visits descendants before their parents. rmdir is
+    # deliberately non-recursive and cannot remove a nonempty directory.
+    printf '%s\0' "${!prune_candidates[@]}" |
+      LC_ALL=C sort -zr >"$work_dir/prune"
+    while IFS= read -r -d '' path; do
+      resolved=""
+      current=""
+      if [[ -d "$path" && ! -L "$path" ]] &&
+        IFS= read -r -d '' resolved < <(realpath -ez -- "$path" 2>/dev/null); then
+        current="$(stat -c '%d:%i:%f' -- "$path" 2>/dev/null)" || current=""
+      fi
+      if [[ "$resolved" != "$path" ||
+        "$current" != "${directory_states["$path"]}" ]]; then
+        printf 'Retained changed source directory: %q\n' "$path" >&2
+        failed=1
+        continue
+      fi
+      if ! rmdir --ignore-fail-on-non-empty -- "$path"; then
+        failed=1
+      elif [[ ! -d "$path" ]]; then
+        pruned=$((pruned + 1))
+        if ((verbose)); then printf 'Pruned directory: %q\n' "$path" >&2; fi
+      fi
+    done <"$work_dir/prune"
+    printf 'Pruned %s empty source directories.\n' "$pruned"
+  fi
+  ((failed == 0)) ||
+    die "Archive retained, but source cleanup was incomplete."
+}
+
 function create_archive() {
-  local secret confirmation prompt_fd parent="${output%/*}"
+  local secret="" confirmation="" prompt_fd parent="${output%/*}"
+  local -a create_command=() test_command=()
   # Do not inherit an export attribute from the caller's environment.
   export -n secret confirmation
   if ((password_stdin)); then
@@ -619,21 +846,29 @@ function create_archive() {
   [[ "$secret" != *$'\r'* ]] || die "Passwords cannot contain CR."
   mkdir -p -- "$parent"
   stage_dir="$(mktemp -d -- "$parent/.find-encrypt.XXXXXXXX")"
+  create_command=("$seven_zip" a -t7z -p -mhe=on -spd -r- -scsUTF-8
+    "-mx=$level" -bso0 -bsp0 "$stage_dir/archive.7z" "@$work_dir/files.txt")
+  test_command=("$seven_zip" t -bso0 -bsp0 -- "$stage_dir/archive.7z")
+  if ((verbose)); then
+    printf 'Create command (password via pipe):' >&2
+    printf ' %q' "${create_command[@]}" >&2
+    printf '\nTest command (password via pipe):' >&2
+    printf ' %q' "${test_command[@]}" >&2
+    printf '\n' >&2
+  fi
   printf 'Creating encrypted archive (%s files)...\n' "${#selected[@]}"
   # The password is pipe input, not an argv entry or exported variable.
   if ! (
-    cd -- "$source_base"
-    printf '%s\n' "$secret" |
-      "$seven_zip" a -t7z -p -mhe=on -spd -r- -scsUTF-8 "-mx=$level" \
-        -bso0 -bsp0 -- "$stage_dir/archive.7z" "@$work_dir/files.txt"
+    # Commands in a conditional subshell do not inherit errexit behavior.
+    cd -- "$source_base" || exit 1
+    printf '%s\n' "$secret" | "${create_command[@]}"
   ); then
     unset secret
     die "7z creation failed; the temporary archive will be removed."
   fi
   printf 'Verifying archive...\n'
   # For reading, bare -p means EMPTY password, so let encrypted headers prompt.
-  if ! printf '%s\n' "$secret" |
-    "$seven_zip" t -bso0 -bsp0 -- "$stage_dir/archive.7z"; then
+  if ! printf '%s\n' "$secret" | "${test_command[@]}"; then
     unset secret
     die "7z verification failed; no archive published."
   fi
@@ -649,6 +884,7 @@ function create_archive() {
 }
 
 function main() {
+  configure_output "$@"
   (($#)) || {
     usage
     return 0
@@ -657,15 +893,30 @@ function main() {
   dependencies
   resolve_paths
   select_files
+  validate_layout
   printf 'Backend: %s\nSource base: %q\nOutput: %q\nSelected: %s files\n' \
     "$backend" "$source_base" "$output" "${#selected[@]}"
+  if ((keep_paths)); then
+    printf 'Layout: paths relative to source base\n'
+  else printf 'Layout: flat (basenames only)\n'; fi
+  if ((delete_sources)); then
+    printf 'Cleanup: delete selected originals after verified publication\n'
+    if ((prune_empty)); then
+      printf 'Pruning: remove empty source subdirectories; keep search roots\n'
+    fi
+  fi
   if ((dry_run)); then
     printf '  %q\n' "${selected[@]}"
     printf 'Dry run: no archive created; source files are retained.\n'
     return 0
   fi
+  if ((verbose)); then
+    printf 'Selected source files:\n' >&2
+    printf '  %q\n' "${selected[@]}" >&2
+  fi
   prepare_list
   create_archive
+  if ((delete_sources)); then cleanup_sources; fi
 }
 
 main "$@"
